@@ -245,7 +245,7 @@ VG_(disp_cp_evcheck_fail):
 
 #endif // defined(VGP_x86_linux)
 
-MARK_STACK_NO_EXEC
+//MARK_STACK_NO_EXEC
 
 /*--------------------------------------------------------------------*/
 /*--- end                                                          ---*/

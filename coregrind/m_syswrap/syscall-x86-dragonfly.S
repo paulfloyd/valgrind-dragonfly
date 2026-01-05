@@ -192,7 +192,7 @@ ML_(blksys_finished):   .long 5b
         
 #endif // defined(VGP_x86_dragonfly)
 
-MARK_STACK_NO_EXEC
+//MARK_STACK_NO_EXEC
  
 /*--------------------------------------------------------------------*/
 /*--- end                                                          ---*/

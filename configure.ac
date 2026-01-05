@@ -4666,7 +4666,6 @@ AC_CONFIG_FILES([
    glibc-2.X.supp
    docs/Makefile 
    tests/Makefile 
-   tests/vg_regtest 
    perf/Makefile 
    perf/vg_perf
    gdbserver_tests/Makefile
@@ -4748,6 +4747,8 @@ AC_CONFIG_FILES([
    shared/Makefile
    solaris/Makefile
 ])
+AC_CONFIG_FILES([tests/vg_regtest],
+                [chmod +x tests/vg_regtest])
 AC_CONFIG_FILES([coregrind/link_tool_exe_linux],
                 [chmod +x coregrind/link_tool_exe_linux])
 AC_CONFIG_FILES([coregrind/link_tool_exe_dragonfly],

@@ -252,7 +252,7 @@ VG_(disp_cp_evcheck_fail):
 #endif // defined(VGP_amd64_linux)
 
 /* Let the linker know we don't need an executable stack */
-MARK_STACK_NO_EXEC
+//MARK_STACK_NO_EXEC
 
 /*--------------------------------------------------------------------*/
 /*--- end                                                          ---*/
