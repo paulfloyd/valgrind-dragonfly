@@ -143,6 +143,7 @@ EXTRA_DIST = \
 	file_locking.stderr.exp file_locking.vgtest \
 	fprw.stderr.exp fprw.stderr.exp-dragonfly fprw.stderr.exp-mips32-be \
 		fprw.stderr.exp-mips32-le fprw.vgtest \
+		fprw.stderr.exp-freebsd \
 	fwrite.stderr.exp fwrite.vgtest fwrite.stderr.exp-kfail \
 	gone_abrt_xml.vgtest gone_abrt_xml.stderr.exp gone_abrt_xml.stderr.exp-solaris \
 	holey_buffer_too_small.vgtest holey_buffer_too_small.stdout.exp \
@@ -223,6 +224,7 @@ EXTRA_DIST = \
 	origin5-bz2.stderr.exp-glibc27-ppc64 \
 	origin5-bz2.stderr.exp-glibc212-s390x \
 	origin5-bz2.stderr.exp-glibc234-s390x \
+	origin5-bz2.stderr.exp-freebsd \
 	origin5-bz2.stderr.exp-dragonfly \
 	origin5-bz2.stderr.exp-glibc218-mips32 \
 	origin6-fp.vgtest origin6-fp.stdout.exp \
@@ -258,14 +260,16 @@ EXTRA_DIST = \
 	sbfragment.stdout.exp sbfragment.stderr.exp sbfragment.vgtest \
 	sem.stderr.exp sem.vgtest \
 	sendmsg.stderr.exp sendmsg.stderr.exp-solaris sendmsg.vgtest \
-	    sendmsg.stderr.exp-dragonfly \
+		sendmsg.stderr.exp-freebsd \
+		sendmsg.stderr.exp-dragonfly \
 	sh-mem.stderr.exp sh-mem.vgtest \
 	sh-mem-random.stderr.exp sh-mem-random.stdout.exp64 \
 	sh-mem-random.stdout.exp sh-mem-random.vgtest \
 	sigaltstack.stderr.exp sigaltstack.vgtest \
-	sigkill.stderr.exp sigkill.stderr.exp-darwin sigkill.stderr.exp-dragonfly sigkill.stderr.exp-mips32 \
-	    sigkill.stderr.exp-solaris \
-	    sigkill.stderr.exp-glibc-2.28 sigkill.vgtest \
+	sigkill.stderr.exp sigkill.stderr.exp-darwin \
+		sigkill.stderr.exp-dragonfly sigkill.stderr.exp-mips32 \
+		sigkill.stderr.exp-freebsd sigkill.stderr.exp-solaris \
+		sigkill.stderr.exp-glibc-2.28 sigkill.vgtest \
 	signal2.stderr.exp signal2.stdout.exp signal2.vgtest \
 	sigprocmask.stderr.exp sigprocmask.stderr.exp2 sigprocmask.vgtest \
 	static_malloc.stderr.exp static_malloc.vgtest \
@@ -290,6 +294,8 @@ EXTRA_DIST = \
 	    test-plo-no.stderr.exp-le64 test-plo-no.stderr.exp-le32 \
 	    test-plo-no.stderr.exp-le32-dragonfly test-plo-no.stderr.exp-le64-dragonfly \
 	    test-plo-no.stderr.exp-s390x-mvc \
+	    test-plo-no.stderr.exp-le32-freebsd \
+	    test-plo-no.stderr.exp-le64-freebsd \
 	test-plo-yes.vgtest test-plo-yes.stdout.exp \
 	    test-plo-yes.stderr.exp-le64 test-plo-yes.stderr.exp-le32 \
 	thread_alloca.stderr.exp thread_alloca.vgtest \

@@ -249,10 +249,10 @@ VG_(disp_cp_evcheck_fail):
 
 .size VG_(disp_run_translations), .-VG_(disp_run_translations)
 
-/* Let the linker know we don't need an executable stack */
-.section .note.GNU-stack,"",@progbits
-
 #endif // defined(VGP_amd64_linux)
+
+/* Let the linker know we don't need an executable stack */
+MARK_STACK_NO_EXEC
 
 /*--------------------------------------------------------------------*/
 /*--- end                                                          ---*/

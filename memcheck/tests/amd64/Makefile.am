@@ -34,6 +34,7 @@ EXTRA_DIST = \
 	sse_memory.stderr.exp sse_memory.stdout.exp sse_memory.vgtest \
 	xor-undef-amd64.stderr.exp xor-undef-amd64.stdout.exp \
 	xor-undef-amd64.stderr.exp-dragonfly xor-undef-amd64.vgtest \
+		xor-undef-amd64.stderr.exp-freebsd \
 	xsave-avx.vgtest xsave-avx.stdout.exp xsave-avx.stderr.exp
 
 check_PROGRAMS = \
