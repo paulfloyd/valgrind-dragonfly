@@ -13,7 +13,7 @@
 
    This program is free software; you can redistribute it and/or
    modify it under the terms of the GNU General Public License as
-   published by the Free Software Foundation; either version 2 of the
+   published by the Free Software Foundation; either version 3 of the
    License, or (at your option) any later version.
 
    This program is distributed in the hope that it will be useful, but
@@ -22,9 +22,7 @@
    General Public License for more details.
 
    You should have received a copy of the GNU General Public License
-   along with this program; if not, write to the Free Software
-   Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
-   02111-1307, USA.
+   along with this program; if not, see <http://www.gnu.org/licenses/>.
 
    The GNU General Public License is contained in the file COPYING.
 */
@@ -49,7 +47,7 @@
 #include "pub_core_syscall.h"
 #include "pub_core_tooliface.h"       /* VG_TRACK */
 #include "pub_core_threadstate.h"     /* ThreadArchState */
-#include "priv_initimg_pathscan.h"
+#include "pub_core_pathscan.h"        /* find_executable */
 #include "pub_core_initimg.h"         /* self */
 
 /* --- !!! --- EXTERNAL HEADERS start --- !!! --- */
@@ -72,10 +70,9 @@ static void load_client ( /*MOD*/ExeInfo* info,
 {
    const HChar* exe_name;
    Int    ret;
-   SysRes res;
 
    vg_assert( VG_(args_the_exename) != NULL);
-   exe_name = ML_(find_executable)( VG_(args_the_exename) );
+   exe_name = VG_(find_executable)( VG_(args_the_exename) );
 
    if (!exe_name) {
       VG_(printf)("valgrind: %s: command not found\n", VG_(args_the_exename));
@@ -89,12 +86,6 @@ static void load_client ( /*MOD*/ExeInfo* info,
    }
 
    // The client was successfully loaded!  Continue.
-
-   /* Get hold of a file descriptor which refers to the client
-      executable.  This is needed for attaching to GDB. */
-   res = VG_(open)(exe_name, VKI_O_RDONLY, VKI_S_IRUSR);
-   if (!sr_isError(res))
-      VG_(cl_exec_fd) = sr_Res(res);
 
    /* Copy necessary bits of 'info' that were filled in */
    *client_ip  = info->init_ip;
@@ -122,19 +113,19 @@ static void load_client ( /*MOD*/ExeInfo* info,
    If this needs to handle any more variables it should be hacked
    into something table driven.  The copy is VG_(malloc)'d space.
 */
-static HChar** setup_client_env ( HChar** origenv, const HChar* toolname)
+static HChar** setup_client_env ( HChar** origenv, const HChar* toolname, Bool use_stack_cache_tunable)
 {
    vg_assert(origenv);
    vg_assert(toolname);
 
-   const HChar* preload_core    = "vgpreload_core";
-   const HChar* ld_preload      = "LD_PRELOAD=";
-   const HChar* v_launcher      = VALGRIND_LAUNCHER "=";
-   Int    ld_preload_len  = VG_(strlen)( ld_preload );
-   Int    v_launcher_len  = VG_(strlen)( v_launcher );
-   Bool   ld_preload_done = False;
-   Int    vglib_len       = VG_(strlen)(VG_(libdir));
-   Bool   debug           = False;
+   const HChar* preload_core      = "vgpreload_core";
+   const HChar* ld_preload        = "LD_PRELOAD=";
+   const HChar* v_launcher        = VALGRIND_LAUNCHER "=";
+   Int    ld_preload_len          = VG_(strlen)( ld_preload );
+   Int    v_launcher_len          = VG_(strlen)( v_launcher );
+   Bool   ld_preload_done         = False;
+   Int    vglib_len               = VG_(strlen)(VG_(libdir));
+   Bool   debug                   = False;
 
    HChar** cpp;
    HChar** ret;
@@ -145,7 +136,7 @@ static HChar** setup_client_env ( HChar** origenv, const HChar* toolname)
       paths.  We might not need the space for vgpreload_<tool>.so, but it
       doesn't hurt to over-allocate briefly.  The 16s are just cautious
       slop. */
-   Int preload_core_path_len = vglib_len + sizeof(preload_core) 
+   Int preload_core_path_len = vglib_len + VG_(strlen)(preload_core)
                                          + sizeof(VG_PLATFORM) + 16;
    Int preload_tool_path_len = vglib_len + VG_(strlen)(toolname) 
                                          + sizeof(VG_PLATFORM) + 16;
@@ -177,9 +168,10 @@ static HChar** setup_client_env ( HChar** origenv, const HChar* toolname)
       if (debug) VG_(printf)("XXXXXXXXX: BEFORE %s\n", *cpp);
    }
 
-   /* Allocate a new space */
+   /* Allocate a new space
+    * Size is envc + 1 new entry + maybe one for GLIBC_TUNABLES + NULL */
    ret = VG_(malloc) ("initimg-linux.sce.3",
-                      sizeof(HChar *) * (envc+1+1)); /* 1 new entry + NULL */
+                      sizeof(HChar *) * (envc+1+1+(use_stack_cache_tunable ? 1 : 0)));
 
    /* copy it over */
    for (cpp = ret; *origenv; ) {
@@ -203,6 +195,18 @@ static HChar** setup_client_env ( HChar** origenv, const HChar* toolname)
 
          ld_preload_done = True;
       }
+      if (use_stack_cache_tunable) {
+          /* overwrite value found with zeroes */
+          const HChar* search_string = "glibc.pthread.stack_cache_size=";
+          HChar* val;
+          if ((val = VG_(strstr)(*cpp, search_string))) {
+              val += VG_(strlen)(search_string);
+              while (*val != '\0' && *val != ':') {
+                  *val++ = '0';
+              }
+              use_stack_cache_tunable = False;
+          }
+      }
       if (debug) VG_(printf)("XXXXXXXXX: MASH   %s\n", *cpp);
    }
 
@@ -215,6 +219,10 @@ static HChar** setup_client_env ( HChar** origenv, const HChar* toolname)
 
       ret[envc++] = cp;
       if (debug) VG_(printf)("XXXXXXXXX: ADD    %s\n", cp);
+   }
+
+   if (use_stack_cache_tunable) {
+      ret[envc++] = VG_(strdup)("initimg-linux.sce.6", "GLIBC_TUNABLES=glibc.pthread.stack_cache_size=0");
    }
 
    /* ret[0 .. envc-1] is live now. */
@@ -379,7 +387,7 @@ struct auxv *find_auxv(UWord* sp)
 
 static 
 Addr setup_client_stack( void*  init_sp,
-                         HChar** orig_envp, 
+                         HChar** orig_envp,
                          const ExeInfo* info,
                          UInt** client_auxv,
                          Addr   clstack_end,
@@ -699,21 +707,31 @@ Addr setup_client_stack( void*  init_sp,
             }
 #           elif defined(VGP_s390x_linux)
             {
-               /* Advertise hardware features "below" TE and VXRS.  TE itself
-                  and anything above VXRS is not supported by Valgrind. */
-               auxv->u.a_val &= (VKI_HWCAP_S390_TE - 1) | VKI_HWCAP_S390_VXRS;
+               /* Out of the hardware features available on the platform,
+                  advertise those "below" TE, as well as the ones explicitly
+                  ORed in the expression below.  Anything else, such as TE
+                  itself, is not supported by Valgrind. */
+               auxv->u.a_val &= ((VKI_HWCAP_S390_TE - 1)
+                                 | VKI_HWCAP_S390_VXRS
+                                 | VKI_HWCAP_S390_VXRS_EXT
+                                 | VKI_HWCAP_S390_VXRS_EXT2
+                                 | VKI_HWCAP_S390_DFLT
+                                 | VKI_HWCAP_S390_NNPA);
             }
 #           elif defined(VGP_arm64_linux)
             {
                /* Limit the AT_HWCAP to just those features we explicitly
 		  support in VEX.  */
-#define ARM64_SUPPORTED_HWCAP (VKI_HWCAP_AES	        \
+#define ARM64_SUPPORTED_HWCAP (VKI_HWCAP_ATOMICS        \
+                               | VKI_HWCAP_AES          \
                                | VKI_HWCAP_PMULL        \
                                | VKI_HWCAP_SHA1         \
                                | VKI_HWCAP_SHA2         \
+                               | VKI_HWCAP_SHA512       \
                                | VKI_HWCAP_CRC32        \
                                | VKI_HWCAP_FP           \
-                               | VKI_HWCAP_ASIMD)
+                               | VKI_HWCAP_ASIMD        \
+                               | VKI_HWCAP_ASIMDDP)
                auxv->u.a_val &= ARM64_SUPPORTED_HWCAP;
             }
 #           endif
@@ -721,6 +739,10 @@ Addr setup_client_stack( void*  init_sp,
 #        if defined(VGP_ppc64be_linux) || defined(VGP_ppc64le_linux)
          case AT_HWCAP2:  {
             Bool auxv_2_07, hw_caps_2_07;
+            Bool auxv_3_0, hw_caps_3_0;
+            Bool auxv_3_1, hw_caps_3_1;
+            Bool auxv_scv_supported;
+
 	    /* The HWCAP2 field may contain an arch_2_07 entry that indicates
              * if the processor is compliant with the 2.07 ISA. (i.e. Power 8
              * or beyond).  The Valgrind vai.hwcaps value
@@ -744,6 +766,14 @@ Addr setup_client_stack( void*  init_sp,
                 PPC_FEATURE2_HAS_ISEL         0x08000000
                 PPC_FEATURE2_HAS_TAR          0x04000000
                 PPC_FEATURE2_HAS_VCRYPTO      0x02000000
+                PPC_FEATURE2_HTM_NOSC         0x01000000
+                PPC_FEATURE2_ARCH_3_00        0x00800000
+                PPC_FEATURE2_HAS_IEEE128      0x00400000
+                PPC_FEATURE2_DARN             0x00200000
+                PPC_FEATURE2_SCV              0x00100000
+                PPC_FEATURE2_HTM_NO_SUSPEND   0x00080000
+                PPC_FEATURE2_ARCH_3_1         0x00040000
+                PPC_FEATURE2_MMA              0x00020000
             */
             auxv_2_07 = (auxv->u.a_val & 0x80000000ULL) == 0x80000000ULL;
             hw_caps_2_07 = (vex_archinfo->hwcaps & VEX_HWCAPS_PPC64_ISA2_07)
@@ -753,7 +783,82 @@ Addr setup_client_stack( void*  init_sp,
 	     * matches the setting in VEX HWCAPS.
 	     */
             vg_assert(auxv_2_07 == hw_caps_2_07);
-            }
+
+            /*  Power ISA version 3.0B
+                March 29, 2017
+                https://ibm.ent.box.com/s/1hzcwkwf8rbju5h9iyf44wm94amnlcrv
+
+                https://openpowerfoundation.org/technical/resource-catalog/
+                http://openpowerfoundation.org/wp-content/uploads/resources/leabi/leabi-20170510.pdf
+                64-bit ELF V2 ABI specification for Power.  HWCAP2 bit pattern
+                for ISA 3.0, page 112.
+
+            */
+            /* ISA 3.0 */
+            auxv_3_0 = (auxv->u.a_val & 0x00800000ULL) == 0x00800000ULL;
+            hw_caps_3_0 = (vex_archinfo->hwcaps & VEX_HWCAPS_PPC64_ISA3_0)
+               == VEX_HWCAPS_PPC64_ISA3_0;
+
+            /* Verify the PPC_FEATURE2_ARCH_3_00 setting in HWCAP2
+             * matches the setting in VEX HWCAPS.
+             */
+            vg_assert(auxv_3_0 == hw_caps_3_0);
+
+            /*  Power ISA version 3.1
+                https://ibm.ent.box.com/s/hhjfw0x0lrbtyzmiaffnbxh2fuo0fog0
+
+                64-bit ELF V? ABI specification for Power.  HWCAP2 bit pattern
+                for ISA 3.0, page ?.
+
+                ADD PUBLIC LINK WHEN AVAILABLE
+            */
+
+            /* Check for SCV support, Can not test scv instruction to see
+               if the system supports scv.  Issuing an scv intruction on a
+               system that does not have scv in the HWCAPS results in a
+               message in dmsg  "Facility 'SCV' unavailable (12), exception".
+               Will have to just use the scv setting from HWCAPS2 to determine
+               if the host supports scv.  */
+            auxv_scv_supported = (auxv->u.a_val & 0x00100000ULL)
+               == 0x00100000ULL;
+
+            VG_(machine_ppc64_set_scv_support)(auxv_scv_supported);
+
+            /* ISA 3.1 */
+            auxv_3_1 = (auxv->u.a_val & 0x00040000ULL) == 0x00040000ULL;
+            hw_caps_3_1 = (vex_archinfo->hwcaps & VEX_HWCAPS_PPC64_ISA3_1)
+               == VEX_HWCAPS_PPC64_ISA3_1;
+
+            /* Verify the PPC_FEATURE2_ARCH_3_1 setting in HWCAP2
+             * matches the setting in VEX HWCAPS.
+             */
+            vg_assert(auxv_3_1 == hw_caps_3_1);
+
+            /* Mask unrecognized HWCAP bits.  Only keep the bits that have
+             * explicit support in VEX. Filter out HTM bits since the
+             * transaction begin instruction (tbegin) is always failed in
+             * Valgrind causing the code to execute the failure path.
+             * The DARN random number (bug #411189) and the SCV syscall
+             * (bug #431157) have been fixed.  Can now include them in the
+             * HWCAP bits.
+             */
+            auxv->u.a_val &= (0x80000000ULL     /* ARCH_2_07 */
+                              | 0x20000000ULL   /* DSCR */
+                              | 0x10000000ULL   /* EBB */
+                              | 0x08000000ULL   /* ISEL */
+                              | 0x04000000ULL   /* TAR */
+                              | 0x04000000ULL   /* VEC_CRYPTO */
+                              | 0x00800000ULL   /* ARCH_3_00 */
+#if defined(VGP_ppc64le_linux)
+   /* Should also be supported on ppc64be,
+      but see https://bugs.kde.org/show_bug.cgi?id=469097  */
+                              | 0x00100000ULL   /* PPC_FEATURE2_SCV */
+#endif
+                              | 0x00400000ULL   /* HAS_IEEE128 */
+                              | 0x00200000ULL   /* PPC_FEATURE2_DARN */
+                              | 0x00040000ULL   /* ARCH_3_1 */
+                              | 0x00020000ULL); /* MMA instruction support */
+         }
 
             break;
 #           endif
@@ -803,9 +908,15 @@ Addr setup_client_stack( void*  init_sp,
 
 #        if !defined(VGP_ppc32_linux) && !defined(VGP_ppc64be_linux) \
             && !defined(VGP_ppc64le_linux) \
-            && !defined(VGP_mips32_linux) && !defined(VGP_mips64_linux)
+            && !defined(VGP_mips32_linux) && !defined(VGP_mips64_linux) \
+            && !defined(VGP_nanomips_linux) \
+            && !defined(VGP_s390x_linux) \
+            && !defined(VGP_riscv64_linux)
          case AT_SYSINFO_EHDR: {
             /* Trash this, because we don't reproduce it */
+            /* riscv64-linux: Keep the VDSO mapping on this platform present.
+               It contains __vdso_rt_sigreturn() which the kernel sets the ra
+               register to point to on a signal delivery. */
             const NSegment* ehdrseg = VG_(am_find_nsegment)((Addr)auxv->u.a_ptr);
             vg_assert(ehdrseg);
             VG_(am_munmap_valgrind)(ehdrseg->start, ehdrseg->end - ehdrseg->start);
@@ -841,6 +952,17 @@ Addr setup_client_stack( void*  init_sp,
    vg_assert(auxv->a_type == AT_NULL);
 
    vg_assert((strtab-stringbase) == stringsize);
+
+   if (VG_(resolved_exename) == NULL) {
+      const HChar *exe_name = VG_(find_executable)(VG_(args_the_exename));
+      HChar interp_name[VKI_PATH_MAX];
+      if (VG_(try_get_interp)(exe_name, interp_name, VKI_PATH_MAX)) {
+         exe_name = interp_name;
+      }
+      HChar resolved_name[VKI_PATH_MAX];
+      VG_(realpath)(exe_name, resolved_name);
+      VG_(resolved_exename) = VG_(strdup)("initimg-linux.sre.1", resolved_name);
+   }
 
    /* client_SP is pointing at client's argc/argv */
 
@@ -915,6 +1037,26 @@ static void setup_client_dataseg ( SizeT max_size )
    vg_assert(sr_Res(sres) == anon_start);
 }
 
+/*
+ * In glibc 2.34 we need to use the TUNABLE mechanism to
+ * disable stack cache when --sim-hints=no-nptl-pthread-stackcache
+ * is specified. This needs to be done in the same manner
+ * as LD_PRELOAD.
+ *
+ * See https://bugs.kde.org/show_bug.cgi?id=444488
+ */
+static Bool need_stack_cache_tunable(HChar** argv)
+{
+    while (argv && *argv) {
+        if (VG_(strncmp)(*argv, "--sim-hints=", VG_(strlen)("--sim-hints=")) == 0) {
+            if (VG_(strstr)(*argv, "no-nptl-pthread-stackcache")) {
+                return True;
+            }
+        }
+        ++argv;
+    }
+    return False;
+}
 
 /*====================================================================*/
 /*=== TOP-LEVEL: VG_(setup_client_initial_image)                   ===*/
@@ -957,7 +1099,7 @@ IIFinaliseImageInfo VG_(ii_create_image)( IICreateImageInfo iicii,
    //   p: get_helprequest_and_toolname [for toolname]
    //--------------------------------------------------------------
    VG_(debugLog)(1, "initimg", "Setup client env\n");
-   env = setup_client_env(iicii.envp, iicii.toolname);
+   env =  setup_client_env(iicii.envp, iicii.toolname, need_stack_cache_tunable(iicii.argv));
 
    //--------------------------------------------------------------
    // Setup client stack, eip, and VG_(client_arg[cv])
@@ -1180,7 +1322,7 @@ void VG_(ii_finalise_image)( IIFinaliseImageInfo iifii )
       process startup. */
 #define PRECISE_GUEST_REG_DEFINEDNESS_AT_STARTUP 1
 
-#  elif defined(VGP_mips32_linux)
+#  elif defined(VGP_mips32_linux) || defined(VGP_nanomips_linux)
    vg_assert(0 == sizeof(VexGuestMIPS32State) % LibVEX_GUEST_STATE_ALIGN);
    /* Zero out the initial state, and set up the simulated FPU in a
       sane way. */
@@ -1194,11 +1336,13 @@ void VG_(ii_finalise_image)( IIFinaliseImageInfo iifii )
    arch->vex.guest_PC = iifii.initial_client_IP;
    arch->vex.guest_r31 = iifii.initial_client_SP;
 
+#  if !defined(VGP_nanomips_linux)
    if (iifii.arch_elf_state.overall_fp_mode == VKI_FP_FR1) {
       arch->vex.guest_CP0_status |= MIPS_CP0_STATUS_FR;
    }
 
-#   elif defined(VGP_mips64_linux)
+#  endif
+#  elif defined(VGP_mips64_linux)
    vg_assert(0 == sizeof(VexGuestMIPS64State) % LibVEX_GUEST_STATE_ALIGN);
    /* Zero out the initial state, and set up the simulated FPU in a
       sane way. */
@@ -1211,6 +1355,35 @@ void VG_(ii_finalise_image)( IIFinaliseImageInfo iifii )
    arch->vex.guest_r29 = iifii.initial_client_SP;
    arch->vex.guest_PC = iifii.initial_client_IP;
    arch->vex.guest_r31 = iifii.initial_client_SP;
+
+#  elif defined(VGP_riscv64_linux)
+   vg_assert(0 == sizeof(VexGuestRISCV64State) % LibVEX_GUEST_STATE_ALIGN);
+
+   /* Zero out the initial state. */
+   LibVEX_GuestRISCV64_initialise(&arch->vex);
+
+   /* Mark all registers as undefined ... */
+   VG_(memset)(&arch->vex_shadow1, 0xFF, sizeof(VexGuestRISCV64State));
+   VG_(memset)(&arch->vex_shadow2, 0x00, sizeof(VexGuestRISCV64State));
+   /* ... except x2 (sp), pc and fcsr. */
+   arch->vex_shadow1.guest_x2 = 0;
+   arch->vex_shadow1.guest_pc = 0;
+   arch->vex_shadow1.guest_fcsr = 0;
+
+   /* Put essential stuff into the new state. */
+   arch->vex.guest_x2 = iifii.initial_client_SP;
+   arch->vex.guest_pc = iifii.initial_client_IP;
+   /* Initialize fcsr in the same way as done by the Linux kernel:
+      accrued exception flags cleared; round to nearest, ties to even. */
+   arch->vex.guest_fcsr = 0;
+
+   /* Tell the tool about the registers we just wrote. */
+   VG_TRACK(post_reg_write, Vg_CoreStartup, /*tid*/1, VG_O_STACK_PTR, 8);
+   VG_TRACK(post_reg_write, Vg_CoreStartup, /*tid*/1, VG_O_INSTR_PTR, 8);
+   VG_TRACK(post_reg_write, Vg_CoreStartup, /*tid*/1,
+            offsetof(VexGuestRISCV64State, guest_fcsr), 4);
+
+#define PRECISE_GUEST_REG_DEFINEDNESS_AT_STARTUP 1
 
 #  else
 #    error Unknown platform

@@ -12,7 +12,7 @@
 
    This program is free software; you can redistribute it and/or
    modify it under the terms of the GNU General Public License as
-   published by the Free Software Foundation; either version 2 of the
+   published by the Free Software Foundation; either version 3 of the
    License, or (at your option) any later version.
 
    This program is distributed in the hope that it will be useful, but
@@ -21,9 +21,7 @@
    General Public License for more details.
 
    You should have received a copy of the GNU General Public License
-   along with this program; if not, write to the Free Software
-   Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
-   02110-1301, USA.
+   along with this program; if not, see <http://www.gnu.org/licenses/>.
 
    The GNU General Public License is contained in the file COPYING.
 */
@@ -385,23 +383,20 @@ void VEX_REGPARM(3)
 UInt /*not-regparm*/
      h_generic_calc_GetMSBs8x16 ( ULong w64hi, ULong w64lo )
 {
-   UInt r = 0;
-   if (w64hi & (1ULL << (64-1))) r |= (1<<15);
-   if (w64hi & (1ULL << (56-1))) r |= (1<<14);
-   if (w64hi & (1ULL << (48-1))) r |= (1<<13);
-   if (w64hi & (1ULL << (40-1))) r |= (1<<12);
-   if (w64hi & (1ULL << (32-1))) r |= (1<<11);
-   if (w64hi & (1ULL << (24-1))) r |= (1<<10);
-   if (w64hi & (1ULL << (16-1))) r |= (1<<9);
-   if (w64hi & (1ULL << ( 8-1))) r |= (1<<8);
-   if (w64lo & (1ULL << (64-1))) r |= (1<<7);
-   if (w64lo & (1ULL << (56-1))) r |= (1<<6);
-   if (w64lo & (1ULL << (48-1))) r |= (1<<5);
-   if (w64lo & (1ULL << (40-1))) r |= (1<<4);
-   if (w64lo & (1ULL << (32-1))) r |= (1<<3);
-   if (w64lo & (1ULL << (24-1))) r |= (1<<2);
-   if (w64lo & (1ULL << (16-1))) r |= (1<<1);
-   if (w64lo & (1ULL << ( 8-1))) r |= (1<<0);
+   /* Some serious bit twiddling going on here.  Mostly we can do it in
+      parallel for the upper and lower 64 bits, assuming the processor offers
+      a suitably high level of ILP. */
+   w64hi &= 0x8080808080808080ULL;
+   w64lo &= 0x8080808080808080ULL;
+   w64hi >>= 7;
+   w64lo >>= 7;
+   w64hi |= (w64hi >> 7);
+   w64lo |= (w64lo >> 7);
+   w64hi |= (w64hi >> 14);
+   w64lo |= (w64lo >> 14);
+   w64hi |= (w64hi >> 28);
+   w64lo |= (w64lo >> 28);
+   UInt r = ((w64hi & 0xFF) << 8) | (w64lo & 0xFF);
    return r;
 }
 

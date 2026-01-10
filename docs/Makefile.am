@@ -4,10 +4,32 @@
 ## tools to do so is impractical / too difficult
 ##-------------------------------------------------------------
 
-# Comment out the next line to skip building print docs.  The default
-# is not to skip building print docs.  Note, after changing it
-# you need to re-run autogen.sh and configure to make it take effect.
-BUILD_ALL_DOCS=yes
+# Building documentation is a pain. It takes longish and requires certain
+# tools you may not have installed.
+# The variable BUILD_DOCS allows you to control what documentation gets
+# built:
+#
+#  BUILD_DOCS=all     builds all documentation
+#  BUILD_DOCS=html    builds HTML docs but skips building PDFs
+#  BUILD_DOCS=none    does not build any documentation
+#
+# Use it on the command line. E.g.:  make dist BUILD_DOCS=none
+#
+ifndef BUILD_ALL_DOCS
+   BUILD_DOCS ?= all
+ else
+   ifeq "$(BUILD_ALL_DOCS)" "yes"
+     BUILD_DOCS ?= all
+   else
+     BUILD_DOCS ?= html
+   endif
+ endif
+
+# Whether to run xmlto pdf --with-fop
+# This is de fault, set to empty to use the default fo to pdf
+# processor that xmlto uses (which might be pdfxmltex, which is
+# known to be broken).
+WITH_FOP=--with-fop
 
 ##-------------------------------------------------------------
 ## END OF HACK
@@ -20,6 +42,7 @@ EXTRA_DIST = \
 	images/prev.png \
 	images/up.png \
 	images/kcachegrind_xtree.png \
+	images/dh-tree.png \
 	internals/3_0_BUGSTATUS.txt \
 	internals/3_1_BUGSTATUS.txt \
 	internals/3_2_BUGSTATUS.txt \
@@ -33,13 +56,19 @@ EXTRA_DIST = \
 	internals/3_11_BUGSTATUS.txt \
 	internals/3_12_BUGSTATUS.txt \
 	internals/3_13_BUGSTATUS.txt \
+	internals/3_14_BUGSTATUS.txt \
+	internals/3_15_BUGSTATUS.txt \
 	internals/MERGE_3_10_1.txt \
 	internals/arm_thumb_notes_gdbserver.txt \
 	internals/avx-notes.txt \
 	internals/BIG_APP_NOTES.txt \
+	internals/c23-functions-HOWTO.txt \
+	internals/Darwin-debug.txt \
 	internals/Darwin-notes.txt \
 	internals/SPEC-notes.txt \
+	internals/client_syscall_arguments.txt \
 	internals/directory-structure.txt \
+	internals/git-HOWTO.txt \
 	internals/howto_BUILD_KDE42.txt \
 	internals/howto_oprofile.txt \
 	internals/m_replacemalloc.txt \
@@ -53,7 +82,10 @@ EXTRA_DIST = \
 	internals/porting-to-ARM.txt \
 	internals/qemu-aarch64-linux-HOWTO.txt \
 	internals/qemu-mips64-linux-HOWTO.txt \
+	internals/qemu-riscv64-linux-HOWTO.txt \
 	internals/register-uses.txt \
+	internals/s390-opcodes.csv \
+	internals/svn-HOWTO.txt \
 	internals/release-HOWTO.txt \
 	internals/segments-seginfos.txt \
 	internals/t-chaining-notes.txt \
@@ -64,6 +96,8 @@ EXTRA_DIST = \
 	internals/why-no-libc.txt \
 	internals/xml-output.txt \
 	internals/xml-output-protocol4.txt \
+	internals/xml-output-protocol5.txt \
+	internals/xml-output-protocol6.txt \
 	lib/line-wrap.xsl \
 	lib/vg_basic.css \
 	lib/vg-fo.xsl \
@@ -104,21 +138,23 @@ valkyriedir  = $(top_builddir)/docs/vg-html
 downloadsdir = $(top_builddir)/docs/downloads
 vgdir        = $(top_builddir)/docs/valgrind
 
+if VGCONF_OS_IS_FREEBSD
+XML_CATALOG_FILES = /usr/local/share/xml/catalog
+else
 XML_CATALOG_FILES = /etc/xml/catalog
+endif
 
 # file to log print output to
 LOGFILE = print.log
 
 # validation stuff
 XMLLINT       = xmllint
-LINT_FLAGS    = --noblanks --noout --xinclude --postvalid --noent
-# validate with docbook 4.3 'cos it supports xml:base natively
-VALID_FLAGS   = --dtdvalid http://www.oasis-open.org/docbook/xml/4.3/docbookx.dtd 
-XMLLINT_FLAGS = $(LINT_FLAGS) $(VALID_FLAGS)
+XMLLINT_FLAGS = --noblanks --noout --xinclude --postvalid --noent \
+		--path $(top_builddir)/docs/xml
 
 # stylesheet processor
 XSLTPROC       = xsltproc
-XSLTPROC_FLAGS = --nonet --xinclude
+XSLTPROC_FLAGS = --nonet --xinclude --path $(top_builddir)/docs/xml
 
 # stylesheets
 XSL_HTML_CHUNK_STYLE  = $(mylibdir)/vg-html-chunk.xsl
@@ -126,14 +162,69 @@ XSL_FO_STYLE          = $(mylibdir)/vg-fo.xsl
 XSL_TEXT_STYLE        = $(mylibdir)/vg-faq2txt.xsl
 XSL_WEBSITE_STYLE     = $(mylibdir)/vg-html-website.xsl
 XSL_MAN_STYLES = \
+    /usr/local/share/xsl/docbook/manpages/docbook.xsl \
     /usr/share/sgml/docbook/xsl-stylesheets/manpages/docbook.xsl \
     /usr/share/xml/docbook/stylesheet/nwalsh/current/manpages/docbook.xsl \
     /usr/share/xml/docbook/stylesheet/nwalsh/manpages/docbook.xsl
 
+# Input files for valid-manual and valid-manpages
+MANUAL_XML_FILES = $(myxmldir)/index.xml \
+		     $(top_builddir)/docs/xml/vg-entities.xml \
+		     $(myxmldir)/quick-start-guide.xml \
+		     $(myxmldir)/manual.xml \
+		       $(myxmldir)/manual-intro.xml \
+		       $(myxmldir)/manual-core.xml \
+		       $(myxmldir)/manual-core-adv.xml \
+		     $(top_srcdir)/*/docs/*-manual.xml \
+		     $(myxmldir)/quick-start-guide.xml \
+		     $(myxmldir)/FAQ.xml \
+		     $(myxmldir)/tech-docs.xml \
+		       $(myxmldir)/design-impl.xml \
+		       $(myxmldir)/manual-writing-tools.xml \
+		       $(top_srcdir)/callgrind/docs/cl-format.xml \
+		     $(myxmldir)/dist-docs.xml \
+		       $(top_srcdir)/AUTHORS \
+		       $(top_srcdir)/NEWS \
+		       $(top_srcdir)/NEWS.old \
+		       $(top_srcdir)/README \
+		       $(top_srcdir)/README_MISSING_SYSCALL_OR_IOCTL \
+		       $(top_srcdir)/README_DEVELOPERS \
+		       $(top_srcdir)/README_PACKAGERS \
+		       $(top_srcdir)/README.s390 \
+		       $(top_srcdir)/README.android \
+		       $(top_srcdir)/README.android_emulator \
+		       $(top_srcdir)/README.mips \
+		       $(top_srcdir)/README.solaris \
+		     $(myxmldir)/licenses.xml \
+		       $(top_srcdir)/COPYING \
+		       $(top_srcdir)/COPYING.DOCS
+
+MANPAGES_XML_FILES = $(myxmldir)/manpages-index.xml \
+		       $(myxmldir)/valgrind-manpage.xml \
+			 $(myxmldir)/manual-core.xml \
+		       $(top_srcdir)/*/docs/*-manual.xml
+
 all-docs: FAQ.txt man-pages html-docs print-docs
 
-valid:
-	$(XMLLINT) $(XMLLINT_FLAGS) $(myxmldir)/index.xml
+valid-manual: $(MANUAL_XML_FILES)
+	if type $(XMLLINT) 2>/dev/null; then \
+	  if [ -f $(XML_CATALOG_FILES) ]; then \
+	    export XML_CATALOG_FILES=$(XML_CATALOG_FILES) && \
+	    $(XMLLINT) $(XMLLINT_FLAGS) $(myxmldir)/index.xml && \
+	    touch $@; \
+	  fi \
+	fi
+
+valid-manpages: $(MANPAGES_XML_FILES)
+	if type $(XMLLINT) 2>/dev/null; then \
+	  if [ -f $(XML_CATALOG_FILES) ]; then \
+	    export XML_CATALOG_FILES=$(XML_CATALOG_FILES) && \
+	    $(XMLLINT) $(XMLLINT_FLAGS) $(myxmldir)/manpages-index.xml && \
+	    touch $@; \
+	  fi \
+	fi
+
+check-local: valid-manual valid-manpages
 
 # The text version of the FAQ.
 FAQ.txt:
@@ -177,14 +268,14 @@ print-docs:
 	mkdir -p $(myprintdir) && \
 	mkdir -p $(myprintdir)/images && \
 	cp $(myimgdir)/*.png $(myprintdir)/images && \
-	$(XSLTPROC) $(XSLTPROC_FLAGS) -o $(myprintdir)/index.fo $(XSL_FO_STYLE) $(myxmldir)/index.xml && \
-	(cd $(myprintdir) && \
-         ( pdfxmltex index.fo && \
-	   pdfxmltex index.fo && \
-	   pdfxmltex index.fo ) &> $(LOGFILE) < /dev/null && \
-	 echo "Generating PS file: $(myprintdir)/index.ps ..." && \
-	 pdftops index.pdf && \
-	 rm -f *.log *.aux *.fo *.out)
+	xmlto -v $(WITH_FOP) --stringparam=keep.relative.image.uris="1" \
+	      -x $(XSL_FO_STYLE) \
+	      --searchpath $(top_builddir)/docs/xml:print \
+	      pdf $(myxmldir)/index.xml &> $(LOGFILE) && \
+	echo "Generating PS file: $(myprintdir)/index.ps ..." && \
+	pdftops index.pdf && \
+	mv index.pdf index.ps $(myprintdir) && \
+	rm $(LOGFILE)
 
 # If the docs have been built, install them.  But don't worry if they have 
 # not -- developers do 'make install' not from a 'make dist'-ified distro all
@@ -207,7 +298,7 @@ install-data-hook:
 			cp $$f $(DESTDIR)$(mandir)/man1; \
 		fi \
 	done
- ifeq ($(BUILD_ALL_DOCS),yes)
+ ifeq ($(BUILD_DOCS),all)
 	set -e; \
 	if test -r index.pdf ; then \
 		mkdir -p $(DESTDIR)$(datadir)/doc/valgrind; \
@@ -223,18 +314,23 @@ install-data-hook:
 # This is done at 'make dist' time.  It builds the html docs, print
 # docs and man pages and copies them into the docs/ directory in the
 # tarball.
- ifeq ($(BUILD_ALL_DOCS),yes)
+ ifeq ($(BUILD_DOCS),none)
+dist-hook:
+
+ else
+   ifeq ($(BUILD_DOCS),all)
 dist-hook: FAQ.txt html-docs man-pages print-docs
 	cp -r html $(distdir)
 	cp FAQ.txt $(distdir)/..
 	cp *.1 $(distdir)
 	cp print/index.pdf $(distdir)
 	cp print/index.ps $(distdir)
- else
+   else
 dist-hook: FAQ.txt html-docs man-pages
 	cp -r html $(distdir)
 	cp FAQ.txt $(distdir)/..
 	cp *.1 $(distdir)
+   endif
  endif
 
 distclean-local:
@@ -242,6 +338,8 @@ distclean-local:
 	rm -f FAQ.txt
 	rm -f $(top_builddir)/FAQ.txt $(top_builddir)/docs/*.1
 
+clean-local:
+	rm -f valid-manual valid-manpages
 
 
 # -----------------------------------------------------------------------
@@ -290,11 +388,12 @@ download-docs:
 	@echo "Generating valgrind_manual.pdf ..."
 	mkdir -p $(vgdir)/print
 	mkdir -p $(vgdir)/print/images
-	$(XSLTPROC) $(XSLTPROC_FLAGS) -o $(vgdir)/print/manual.fo $(XSL_FO_STYLE) $(myxmldir)/index.xml
-	(cd $(vgdir)/print/ && \
-		( pdfxmltex manual.fo && \
-		  pdfxmltex manual.fo && \
-		  pdfxmltex manual.fo ) &> $(LOGFILE) < /dev/null )
+	cp $(myimgdir)/*.png $(vgdir)/print/images/
+	xmlto -v $(WITH_FOP) --stringparam=keep.relative.image.uris="1" \
+	      -x $(XSL_FO_STYLE) \
+	      --searchpath $(top_builddir)/docs/xml:print \
+	      pdf $(myxmldir)/index.xml &> $(LOGFILE)
+	mv index.pdf $(vgdir)/print/manual.pdf
 	@echo ""
 	@echo "Generating valgrind_manual.ps.bz2 ..."
 	(cd $(vgdir)/print/ && \
@@ -302,4 +401,4 @@ download-docs:
 	mv $(vgdir)/print/manual.pdf $(downloadsdir)/valgrind_manual.pdf
 	mv $(vgdir)/print/manual.ps $(downloadsdir)/valgrind_manual.ps
 	bzip2 $(downloadsdir)/valgrind_manual.ps
-	/bin/rm -fr $(vgdir)
+	/bin/rm -fr $(vgdir) $(LOGFILE)

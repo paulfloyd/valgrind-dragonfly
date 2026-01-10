@@ -1,7 +1,7 @@
 
 include $(top_srcdir)/Makefile.tool-tests.am
 
-dist_noinst_SCRIPTS = filter_stderr filter_verbose
+dist_noinst_SCRIPTS = filter_stderr filter_verbose filter_new_aligned filter_ignore_fn
 
 EXTRA_DIST = \
 	alloc-fns-A.post.exp alloc-fns-A.stderr.exp alloc-fns-A.vgtest \
@@ -10,11 +10,12 @@ EXTRA_DIST = \
 	basic2.post.exp basic2.stderr.exp basic2.vgtest \
 	big-alloc.post.exp big-alloc.post.exp-64bit big-alloc.post.exp-ppc64 \
 	big-alloc.stderr.exp big-alloc.vgtest \
+	big-alloc.post.exp-x86-freebsd \
+	bug469146.post.exp bug469146.stderr.exp bug469146.vgtest \
 	deep-A.post.exp deep-A.stderr.exp deep-A.vgtest \
 	deep-B.post.exp deep-B.stderr.exp deep-B.vgtest \
 	deep-C.post.exp deep-C.stderr.exp deep-C.vgtest \
 	deep-D.post.exp deep-D.stderr.exp deep-D.vgtest \
-	deep-D.post.exp-ppc64 \
         culling1.stderr.exp culling1.vgtest \
         culling2.stderr.exp culling2.vgtest \
 	custom_alloc.post.exp custom_alloc.stderr.exp custom_alloc.vgtest \
@@ -56,6 +57,7 @@ check_PROGRAMS = \
 	alloc-fns \
 	basic \
 	big-alloc \
+	bug469146 \
 	culling1 culling2 \
 	custom_alloc \
 	deep \
@@ -70,12 +72,18 @@ check_PROGRAMS = \
 	new-cpp \
 	null \
 	one \
-	overloaded-new \
-	pages_as_heap \
 	peak \
 	realloc \
 	thresholds \
 	zero
+
+if HAVE_SBRK
+check_PROGRAMS += pages_as_heap
+endif
+
+if HAVE_ALIGNED_CXX_ALLOC
+check_PROGRAMS += overloaded-new
+endif
 
 inlinfomalloc_CFLAGS = $(AM_CFLAGS) -w
 
@@ -83,6 +91,27 @@ AM_CFLAGS   += $(AM_FLAG_M3264_PRI)
 AM_CXXFLAGS += $(AM_FLAG_M3264_PRI)
 
 # C++ tests
+bug469146_SOURCES	= bug469146.cpp
+# -fno-optimize-sibling-calls because otherwise some platforms will have
+# tail call optimization which messes up --ignore-fn
+bug469146_CXXFLAGS	= $(AM_CXXFLAGS) -O2 -fno-optimize-sibling-calls @FLAG_W_NO_USE_AFTER_FREE@ @FLAG_W_NO_ATTRIBUTES@
 new_cpp_SOURCES		= new-cpp.cpp
 overloaded_new_SOURCES	= overloaded-new.cpp
+# aligned new needs C++17
+overloaded_new_CXXFLAGS	= $(AM_CXXFLAGS) @FLAG_W_NO_IMPLICIT_EXCEPTION_SPEC_MISMATCH@ @FLAG_W_NO_MISSING_EXCEPTION_SPEC@ @FLAG_W_NO_ATTRIBUTES@ -std=c++17
+
+# Suppress warnings for issues we are testing for
+alloc_fns_CFLAGS	= $(AM_CFLAGS) -Wno-unused-result
+big_alloc_CFLAGS	= $(AM_CFLAGS) -Wno-unused-result
+culling1_CFLAGS		= $(AM_CFLAGS) -Wno-unused-result
+culling2_CFLAGS		= $(AM_CFLAGS) -Wno-unused-result
+deep_CFLAGS		= $(AM_CFLAGS) -Wno-unused-result
+ignoring_CFLAGS		= $(AM_CFLAGS) -Wno-unused-result
+insig_CFLAGS		= $(AM_CFLAGS) -Wno-unused-result
+long_names_CFLAGS	= $(AM_CFLAGS) -Wno-unused-result
+malloc_usable_CFLAGS	= ${AM_CFLAGS} @FLAG_W_NO_MAYBE_UNINITIALIZED@
+one_CFLAGS		= $(AM_CFLAGS) -Wno-unused-result
+pages_as_heap_CFLAGS	= ${AM_CFLAGS} @FLAG_W_NO_DEPRECATED_DECLARATIONS@
+realloc_CFLAGS		= $(AM_CFLAGS) @FLAG_W_NO_FREE_NONHEAP_OBJECT@
+thresholds_CFLAGS	= $(AM_CFLAGS) -Wno-unused-result
 

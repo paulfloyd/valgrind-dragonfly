@@ -1,20 +1,23 @@
 
-AUTOMAKE_OPTIONS = foreign 1.10 dist-bzip2
+AUTOMAKE_OPTIONS = 1.13
+
+ACLOCAL_AMFLAGS = -I m4
 
 include $(top_srcdir)/Makefile.all.am 
 
-TOOLS =		memcheck \
+TOOLS = \
+		memcheck \
 		cachegrind \
 		callgrind \
-		massif \
-		lackey \
-		none \
 		helgrind \
-		drd
+		drd \
+		massif \
+		dhat \
+		lackey \
+		none
 
-EXP_TOOLS = 	exp-sgcheck \
-		exp-bbv \
-		exp-dhat
+EXP_TOOLS = \
+		exp-bbv
 
 # Put docs last because building the HTML is slow and we want to get
 # everything else working before we try it.
@@ -30,6 +33,7 @@ SUBDIRS = \
 	perf \
 	gdbserver_tests \
 	memcheck/tests/vbit-test \
+	none/tests/iropt-test \
 	auxprogs \
 	mpi \
 	solaris \
@@ -40,24 +44,23 @@ SUPP_FILES = \
 	glibc-2.2.supp glibc-2.3.supp glibc-2.4.supp glibc-2.5.supp \
 	glibc-2.6.supp glibc-2.7.supp glibc-2.X.supp.in \
 	xfree-3.supp xfree-4.supp \
-	glibc-2.34567-NPTL-helgrind.supp \
+	glibc-2.X-helgrind.supp \
 	glibc-2.2-LinuxThreads-helgrind.supp \
 	glibc-2.X-drd.supp \
-	exp-sgcheck.supp \
-	darwin9.supp darwin9-drd.supp \
+	freebsd.supp freebsd-helgrind.supp freebsd-drd.supp \
+	darwin-legacy.supp darwin.supp \
+	darwin-drd.supp darwin-helgrind.supp \
 	dragonfly.supp \
-	darwin10.supp darwin10-drd.supp \
-	darwin11.supp darwin12.supp darwin13.supp darwin14.supp darwin15.supp \
-	darwin16.supp darwin17.supp \
 	bionic.supp \
-	solaris11.supp solaris12.supp
+	solaris11.supp solaris12.supp \
+	musl.supp
 DEFAULT_SUPP_FILES = @DEFAULT_SUPP@
 
 # We include all the base .supp files in the distribution, but not
 # default.supp, as it is built from the base .supp files at compile-time.
 dist_noinst_DATA = $(SUPP_FILES)
 
-vglibdir = $(pkglibdir)
+vglibdir = $(pkglibexecdir)
 vglib_DATA = default.supp
 
 pkgconfigdir = $(libdir)/pkgconfig
@@ -95,6 +98,13 @@ exp-regtest: check
 perf: check
 	@PERL@ perf/vg_perf perf
 
+# Auxiliary test suites run under valgrind
+auxchecks: all
+	$(MAKE) -C auxprogs auxchecks
+
+ltpchecks: all
+	$(MAKE) -C auxprogs ltpchecks
+
 # Nb: no need to include any Makefile.am files here, or files included from
 # them, as automake includes them automatically.  Also not COPYING, README
 # or NEWS.
@@ -103,6 +113,7 @@ perf: check
 EXTRA_DIST = \
 	COPYING.DOCS \
 	README_DEVELOPERS \
+	README_DEVELOPERS_processes \
 	README_DRAGONFLY \
 	README_PACKAGERS \
 	README_MISSING_SYSCALL_OR_IOCTL \
@@ -111,12 +122,15 @@ EXTRA_DIST = \
 	README.android_emulator \
 	README.mips \
 	README.aarch64 \
+	README.riscv64 \
 	README.solaris \
+	README.freebsd \
 	NEWS.old \
 	valgrind.pc.in \
 	valgrind.spec.in \
 	valgrind.spec \
-	autogen.sh
+	autogen.sh \
+	m4
 
 dist-hook: include/vgversion.h
 	cp -p include/vgversion.h $(distdir)/include/vgversion_dist.h
@@ -131,6 +145,10 @@ all-local: default.supp include/vgversion.h
 
 clean-local:
 	rm -rf $(inplacedir) include/vgversion.h
+	find . -name '*.vgtest.log' -print0 | xargs -r -0 rm
+	find . -name '*.vgtest.trs' -print0 | xargs -r -0 rm
+	find . -name test-suite.log -print0 | xargs -r -0 rm
+	rm -f test-suite-overall.log
 
 # Need config.h in the installed tree, since some files depend on it
 pkginclude_HEADERS = config.h

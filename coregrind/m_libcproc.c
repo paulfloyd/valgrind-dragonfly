@@ -12,7 +12,7 @@
 
    This program is free software; you can redistribute it and/or
    modify it under the terms of the GNU General Public License as
-   published by the Free Software Foundation; either version 2 of the
+   published by the Free Software Foundation; either version 3 of the
    License, or (at your option) any later version.
 
    This program is distributed in the hope that it will be useful, but
@@ -21,9 +21,7 @@
    General Public License for more details.
 
    You should have received a copy of the GNU General Public License
-   along with this program; if not, write to the Free Software
-   Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
-   02111-1307, USA.
+   along with this program; if not, see <http://www.gnu.org/licenses/>.
 
    The GNU General Public License is contained in the file COPYING.
 */
@@ -40,9 +38,11 @@
 #include "pub_core_libcsignal.h"
 #include "pub_core_seqmatch.h"
 #include "pub_core_mallocfree.h"
+#include "pub_core_signals.h"
 #include "pub_core_syscall.h"
 #include "pub_core_xarray.h"
 #include "pub_core_clientstate.h"
+#include "pub_core_debuglog.h"   // VG_(debugLog)
 
 #if defined(VGO_darwin)
 /* --- !!! --- EXTERNAL HEADERS start --- !!! --- */
@@ -67,7 +67,7 @@ HChar** VG_(client_envp) = NULL;
 const HChar *VG_(libdir) = VG_LIBDIR;
 
 const HChar *VG_(LD_PRELOAD_var_name) =
-#if defined(VGO_linux) || defined(VGO_solaris) || defined(VGO_dragonfly)
+#if defined(VGO_linux) || defined(VGO_solaris) || defined(VGO_freebsd)|| defined(VGO_dragonfly)
    "LD_PRELOAD";
 #elif defined(VGO_darwin)
    "DYLD_INSERT_LIBRARIES";
@@ -348,7 +348,7 @@ void VG_(client_cmd_and_args)(HChar *buffer, SizeT buf_size)
 
 Int VG_(waitpid)(Int pid, Int *status, Int options)
 {
-#  if defined(VGO_linux) || defined(VGO_dragonfly)
+#  if defined(VGO_linux) || defined(VGO_freebsd)|| defined(VGO_dragonfly)
    SysRes res = VG_(do_syscall4)(__NR_wait4,
                                  pid, (UWord)status, options, 0);
    return sr_isError(res) ? -1 : sr_Res(res);
@@ -583,10 +583,10 @@ Int VG_(system) ( const HChar* cmd )
    return zzz == -1 ? -1 : 0;
 }
 
-Int VG_(sysctl)(Int *name, UInt namelen, void *oldp, SizeT *oldlenp, void *newp, SizeT newlen)
+Int VG_(sysctl)(Int *name, UInt namelen, void *oldp, SizeT *oldlenp, const void *newp, SizeT newlen)
 {
    SysRes res;
-#  if defined(VGO_darwin) || defined(VGO_dragonfly)
+#  if defined(VGO_darwin) || defined(VGO_freebsd)|| defined(VGO_dragonfly)
    res = VG_(do_syscall6)(__NR___sysctl,
                            (UWord)name, namelen, (UWord)oldp, (UWord)oldlenp, (UWord)newp, newlen);
 #  else
@@ -602,24 +602,60 @@ Int VG_(sysctl)(Int *name, UInt namelen, void *oldp, SizeT *oldlenp, void *newp,
 /* Support for getrlimit. */
 Int VG_(getrlimit) (Int resource, struct vki_rlimit *rlim)
 {
-   SysRes res = VG_(mk_SysRes_Error)(VKI_ENOSYS);
+   SysRes res;
    /* res = getrlimit( resource, rlim ); */
+
+#  if defined(__NR_prlimit64) && defined(VKI_RLIM_INFINITY) && defined(VKI_RLIM64_INFINITY)
+   struct vki_rlimit64 new_rlimit;
+   res = VG_(do_syscall4)(__NR_prlimit64, 0, resource, 0, (UWord)&new_rlimit);
+   if (!sr_isError(res)) {
+      if (new_rlimit.rlim_cur == VKI_RLIM_INFINITY)
+         new_rlimit.rlim_cur = VKI_RLIM64_INFINITY;
+      if (new_rlimit.rlim_max == VKI_RLIM_INFINITY)
+         new_rlimit.rlim_max = VKI_RLIM64_INFINITY;
+      rlim->rlim_cur = new_rlimit.rlim_cur;
+      rlim->rlim_max = new_rlimit.rlim_max;
+      return sr_Res(res);
+   }
+   if (sr_Err(res) != VKI_ENOSYS) return -1;
+#  endif
+
 #  ifdef __NR_ugetrlimit
    res = VG_(do_syscall2)(__NR_ugetrlimit, resource, (UWord)rlim);
+   if (!sr_isError(res)) return sr_Res(res);
+   if (sr_Err(res) != VKI_ENOSYS) return -1;
 #  endif
-   if (sr_isError(res) && sr_Err(res) == VKI_ENOSYS)
-      res = VG_(do_syscall2)(__NR_getrlimit, resource, (UWord)rlim);
-   return sr_isError(res) ? -1 : sr_Res(res);
-}
 
+#  ifdef __NR_getrlimit
+      res = VG_(do_syscall2)(__NR_getrlimit, resource, (UWord)rlim);
+   if (!sr_isError(res)) return sr_Res(res);
+#  endif
+
+   return -1;
+}
 
 /* Support for setrlimit. */
 Int VG_(setrlimit) (Int resource, const struct vki_rlimit *rlim)
 {
    SysRes res;
    /* res = setrlimit( resource, rlim ); */
+
+#  ifdef __NR_prlimit64
+   struct vki_rlimit64 new_rlimit;
+   new_rlimit.rlim_cur = rlim->rlim_cur;
+   new_rlimit.rlim_max = rlim->rlim_max;
+   res = VG_(do_syscall4)(__NR_prlimit64, 0, resource, (UWord)&new_rlimit, 0);
+   if (!sr_isError(res)) return sr_Res(res);
+   if (sr_Err(res) != VKI_ENOSYS) return -1;
+#  endif
+
+#  ifdef __NR_setrlimit
    res = VG_(do_syscall2)(__NR_setrlimit, resource, (UWord)rlim);
-   return sr_isError(res) ? -1 : sr_Res(res);
+   if (!sr_isError(res)) return sr_Res(res);
+   if (sr_Err(res) != VKI_ENOSYS) return -1;
+#  endif
+
+   return -1;
 }
 
 /* Support for prctl. */
@@ -662,7 +698,8 @@ Int VG_(gettid)(void)
        * the /proc/self link is pointing...
        */
 
-#     if defined(VGP_arm64_linux)
+#     if defined(VGP_arm64_linux) || defined(VGP_nanomips_linux) \
+         || defined(VGP_riscv64_linux)
       res = VG_(do_syscall4)(__NR_readlinkat, VKI_AT_FDCWD,
                              (UWord)"/proc/self",
                              (UWord)pid, sizeof(pid));
@@ -683,6 +720,15 @@ Int VG_(gettid)(void)
    }
 
    return sr_Res(res);
+
+#  elif defined(VGO_freebsd)
+   SysRes res;
+   long tid;
+
+   res = VG_(do_syscall1)(__NR_thr_self, (UWord)&tid);
+   if (sr_isError(res))
+      tid = sr_Res(VG_(do_syscall0)(__NR_getpid));
+   return tid;
 
 #  elif defined(VGO_dragonfly)
    SysRes res;
@@ -720,9 +766,10 @@ Int VG_(getpid) ( void )
 Int VG_(getpgrp) ( void )
 {
    /* ASSUMES SYSCALL ALWAYS SUCCEEDS */
-#  if defined(VGP_arm64_linux)
+#  if defined(VGP_arm64_linux) || defined(VGP_nanomips_linux) \
+      || defined(VGP_riscv64_linux)
    return sr_Res( VG_(do_syscall1)(__NR_getpgid, 0) );
-#  elif defined(VGO_linux) || defined(VGO_darwin) || defined(VGO_dragonfly)
+#  elif defined(VGO_linux) || defined(VGO_darwin) || defined(VGO_freebsd)|| defined(VGO_dragonfly)
    return sr_Res( VG_(do_syscall0)(__NR_getpgrp) );
 #  elif defined(VGO_solaris)
    /* Uses the shared pgrpsys syscall, 0 for the getpgrp variant. */
@@ -735,7 +782,7 @@ Int VG_(getpgrp) ( void )
 Int VG_(getppid) ( void )
 {
    /* ASSUMES SYSCALL ALWAYS SUCCEEDS */
-#  if defined(VGO_linux) || defined(VGO_darwin) || defined(VGO_dragonfly)
+#  if defined(VGO_linux) || defined(VGO_darwin) || defined(VGO_freebsd)|| defined(VGO_dragonfly)
    return sr_Res( VG_(do_syscall0)(__NR_getppid) );
 #  elif defined(VGO_solaris)
    /* Uses the shared getpid/getppid syscall, val2 contains a parent pid. */
@@ -748,7 +795,7 @@ Int VG_(getppid) ( void )
 Int VG_(geteuid) ( void )
 {
    /* ASSUMES SYSCALL ALWAYS SUCCEEDS */
-#  if defined(VGO_linux) || defined(VGO_darwin) || defined(VGO_dragonfly)
+#  if defined(VGO_linux) || defined(VGO_darwin) || defined(VGO_freebsd)|| defined(VGO_dragonfly)
    {
 #     if defined(__NR_geteuid32)
       // We use the 32-bit version if it's supported.  Otherwise, IDs greater
@@ -769,7 +816,7 @@ Int VG_(geteuid) ( void )
 
 Int VG_(getegid) ( void )
 {
-#  if defined(VGO_linux) || defined(VGO_darwin) || defined(VGO_dragonfly)
+#  if defined(VGO_linux) || defined(VGO_darwin) || defined(VGO_freebsd)|| defined(VGO_dragonfly)
    /* ASSUMES SYSCALL ALWAYS SUCCEEDS */
 #    if defined(__NR_getegid32)
    // We use the 32-bit version if it's supported.  Otherwise, IDs greater
@@ -816,7 +863,9 @@ Int VG_(getgroups)( Int size, UInt* list )
         || defined(VGP_ppc64be_linux) || defined(VGP_ppc64le_linux)  \
         || defined(VGO_darwin) || defined(VGP_s390x_linux)    \
         || defined(VGP_mips32_linux) || defined(VGP_arm64_linux) \
-        || defined(VGO_solaris) || defined(VGO_dragonfly)
+        || defined(VGO_solaris) || defined(VGP_nanomips_linux) \
+        || defined(VGP_riscv64_linux) || defined(VGO_freebsd) \
+        || defined(VGO_dragonfly)
    SysRes sres;
    sres = VG_(do_syscall2)(__NR_getgroups, size, (Addr)list);
    if (sr_isError(sres))
@@ -835,7 +884,7 @@ Int VG_(getgroups)( Int size, UInt* list )
 Int VG_(ptrace) ( Int request, Int pid, void *addr, void *data )
 {
    SysRes res;
-#  if defined(VGO_linux) || defined(VGO_darwin) || defined(VGO_dragonfly)
+#  if defined(VGO_linux) || defined(VGO_darwin) || defined(VGO_freebsd)|| defined(VGO_dragonfly)
    res = VG_(do_syscall4)(__NR_ptrace, request, pid, (UWord)addr, (UWord)data);
 #  elif defined(VGO_solaris)
    /* There is no ptrace syscall on Solaris.  Such requests has to be
@@ -855,21 +904,84 @@ Int VG_(ptrace) ( Int request, Int pid, void *addr, void *data )
    Fork
    ------------------------------------------------------------------ */
 
+/* Record PID of a child process in order to avoid sending any SIGCHLD from
+   it to the client.  If PID is 0 then this is the child process and it
+   should synch with the parent to ensure it can't send any SIGCHLD before
+   the parent has registered its PID.
+
+   FDS should be initialized with VG_(pipe). This function closes both
+   file descriptors.  */
+static void register_sigchld_ignore ( Int pid, Int fds[2])
+{
+   Int child_wait = 1;
+   ht_ignore_node *n;
+
+   if (fds[0] < 0 || fds[1] < 0)
+      return;
+
+   if (pid == 0) {
+      /* We are the child, close writing fd that we don't use.  */
+      VG_(close)(fds[1]);
+      /* Before proceeding, ensure parent has recorded child PID in map
+         of SIGCHLD to ignore */
+      while (child_wait == 1)
+      {
+         if (VG_(read)(fds[0], &child_wait, sizeof(Int)) <= 0) {
+            VG_(message)(Vg_DebugMsg,
+               "warning: Unable to record PID of internal process (read)\n");
+            child_wait = 0;
+         }
+      }
+
+      /* Now close reading fd.  */
+      VG_(close)(fds[0]);
+      return;
+   }
+
+   n = VG_(malloc)("ht.ignore.node", sizeof(ht_ignore_node));
+   n->key = pid;
+   if (ht_sigchld_ignore == NULL)
+      ht_sigchld_ignore = VG_(HT_construct)("ht.sigchld.ignore");
+   VG_(HT_add_node)(ht_sigchld_ignore, n);
+
+   /* We are the parent process, close read fd that we don't use.  */
+   VG_(close)(fds[0]);
+
+   child_wait = 0;
+   if (VG_(write)(fds[1], &child_wait, sizeof(Int)) <= 0)
+      VG_(message)(Vg_DebugMsg,
+         "warning: Unable to record PID of internal process (write)\n");
+
+   /* Now close writing fd.  */
+   VG_(close)(fds[1]);
+}
+
 Int VG_(fork) ( void )
 {
-#  if defined(VGP_arm64_linux)
+   Int fds[2];
+
+   if (VG_(pipe)(fds) != 0) {
+      VG_(message)(Vg_DebugMsg,
+         "warning: Unable to record PID of internal process (pipe)\n");
+      fds[0] = fds[1] = -1;
+   }
+
+#  if defined(VGP_arm64_linux) || defined(VGP_nanomips_linux) \
+      || defined(VGP_riscv64_linux)
    SysRes res;
    res = VG_(do_syscall5)(__NR_clone, VKI_SIGCHLD,
                           (UWord)NULL, (UWord)NULL, (UWord)NULL, (UWord)NULL);
    if (sr_isError(res))
       return -1;
+   register_sigchld_ignore(sr_Res(res), fds);
    return sr_Res(res);
 
-#  elif defined(VGO_linux) || defined(VGO_dragonfly)
+#  elif defined(VGO_linux) || defined(VGO_freebsd)|| defined(VGO_dragonfly)
    SysRes res;
    res = VG_(do_syscall0)(__NR_fork);
    if (sr_isError(res))
       return -1;
+   register_sigchld_ignore(sr_Res(res), fds);
    return sr_Res(res);
 
 #  elif defined(VGO_darwin)
@@ -879,8 +991,10 @@ Int VG_(fork) ( void )
       return -1;
    /* on success: wLO = child pid; wHI = 1 for child, 0 for parent */
    if (sr_ResHI(res) != 0) {
+      register_sigchld_ignore(0, fds);
       return 0;  /* this is child: return 0 instead of child pid */
    }
+   register_sigchld_ignore(sr_Res(res), fds);
    return sr_Res(res);
 
 #  elif defined(VGO_solaris)
@@ -897,8 +1011,10 @@ Int VG_(fork) ( void )
               child,
         val2 = 0 in the parent process, 1 in the child process. */
    if (sr_ResHI(res) != 0) {
+      register_sigchld_ignore(0, fds);
       return 0;
    }
+   register_sigchld_ignore(sr_Res(res), fds);
    return sr_Res(res);
 
 #  else
@@ -933,7 +1049,7 @@ UInt VG_(read_millisecond_timer) ( void )
      }
    }
 
-#  elif defined(VGO_dragonfly)
+#  elif defined(VGO_freebsd)|| defined(VGO_dragonfly)
    { SysRes res;
      struct vki_timeval tv_now;
      res = VG_(do_syscall2)(__NR_gettimeofday, (UWord)&tv_now, (UWord)NULL);
@@ -949,7 +1065,15 @@ UInt VG_(read_millisecond_timer) ( void )
      struct vki_timeval tv_now = { 0, 0 };
      res = VG_(do_syscall2)(__NR_gettimeofday, (UWord)&tv_now, (UWord)NULL);
      vg_assert(! sr_isError(res));
+#   if DARWIN_VERS >= DARWIN_10_13
+     now = tv_now.tv_sec * 1000000ULL + tv_now.tv_usec;
+#   else
+     // Weird: it seems that gettimeofday() doesn't fill in the timeval, but
+     // rather returns the tv_sec as the low 32 bits of the result and the
+     // tv_usec as the high 32 bits of the result.  (But the timeval cannot be
+     // NULL!)  See bug 200990.
      now = sr_Res(res) * 1000000ULL + sr_ResHI(res);
+#endif
    }
 
 #  else
@@ -962,6 +1086,20 @@ UInt VG_(read_millisecond_timer) ( void )
 
    return (now - base) / 1000;
 }
+
+#  if defined(VGO_linux) || defined(VGO_solaris) || defined(VGO_freebsd)
+void VG_(clock_gettime) ( struct vki_timespec *ts, vki_clockid_t clk_id )
+{
+    SysRes res;
+    res = VG_(do_syscall2)(__NR_clock_gettime, clk_id,
+                           (UWord)ts);
+    vg_assert (sr_isError(res) == 0);
+}
+#  elif defined(VGO_darwin)
+  /* See pub_tool_libcproc.h */
+#  else
+#    error "Unknown OS"
+#  endif
 
 Int VG_(gettimeofday)(struct vki_timeval *tv, struct vki_timezone *tz)
 {
@@ -996,6 +1134,16 @@ UInt VG_(get_user_milliseconds)(void)
       VG_(memset)(&ru, 0, sizeof(ru));
       SysRes sr = VG_(do_syscall2)(__NR_rusagesys, VKI__RUSAGESYS_GETRUSAGE,
                                    (UWord) &ru);
+      if (!sr_isError(sr)) {
+         res = ru.ru_utime.tv_sec * 1000 + ru.ru_utime.tv_usec / 1000;
+      }
+   }
+
+#  elif defined(VGO_freebsd)
+   {
+      struct vki_rusage ru;
+      VG_(memset)(&ru, 0, sizeof(ru));
+      SysRes sr = VG_(do_syscall2)(__NR_getrusage, VKI_RUSAGE_SELF, (UWord)&ru);
       if (!sr_isError(sr)) {
          res = ru.ru_utime.tv_sec * 1000 + ru.ru_utime.tv_usec / 1000;
       }
@@ -1080,32 +1228,38 @@ void VG_(do_atfork_child)(ThreadId tid)
 }
 
 /* ---------------------------------------------------------------------
-   Dragonfly sysctlbyname(), modfind(), etc
+   FreeBSD sysctlbyname, getosreldate, is32on64
    ------------------------------------------------------------------ */
 
-#if defined(VGO_dragonfly)
-Int VG_(sysctlbyname)(const Char *name, void *oldp, vki_size_t *oldlenp, void *newp, vki_size_t newlen)
+#if defined(VGO_freebsd)|| defined(VGO_dragonfly)
+Int VG_(sysctlbyname)(const HChar *name, void *oldp, SizeT *oldlenp, const void *newp, SizeT newlen)
 {
+   vg_assert(name);
+#if ((__FreeBSD_version >= 1201522 && __FreeBSD_version <= 1300000) || __FreeBSD_version >= 1300045)
+   SysRes res = VG_(do_syscall6)(__NR___sysctlbyname, (RegWord)name, VG_(strlen)(name), (RegWord)oldp, (RegWord)oldlenp, (RegWord)newp, (RegWord)newlen);
+   return sr_isError(res) ? -1 : sr_Res(res);
+#else
    Int oid[2];
    Int real_oid[10];
-   vki_size_t oidlen;
+   SizeT oidlen;
    int error;
 
    oid[0] = 0;		/* magic */
    oid[1] = 3;		/* undocumented */
    oidlen = sizeof(real_oid);
-   error = VG_(sysctl)(oid, 2, real_oid, &oidlen, (void *)name, VG_(strlen)(name));
+   error = VG_(sysctl)(oid, 2, real_oid, &oidlen, name, VG_(strlen)(name));
    if (error < 0)
       return error;
    oidlen /= sizeof(int);
    error = VG_(sysctl)(real_oid, oidlen, oldp, oldlenp, newp, newlen);
    return error;
+ #endif
 }
 
 Int VG_(getosreldate)(void)
 {
    static Int osreldate = 0;
-   vki_size_t osreldatel;
+   SizeT osreldatel;
 
    if (osreldate == 0) {
       osreldatel = sizeof(osreldate);
@@ -1116,8 +1270,20 @@ Int VG_(getosreldate)(void)
 
 Bool VG_(is32on64)(void)
 {
-#if defined(VGP_amd64_dragonfly)
+#if defined(VGP_amd64_freebsd) || defined(VGP_arm64_freebsd)|| defined(VGP_amd64_dragonfly)
    return False;
+#elif defined(VGP_x86_freebsd)
+   SysRes res;
+   struct vg_stat stat_buf;
+   res = VG_(stat)("/libexec/ld-elf32.so.1", &stat_buf);
+   if (!sr_isError(res)) {
+      // file exists, we're running on amd64
+      VG_(debugLog)(1, "check-os-bitness", "i386 executable on amd64 kernel\n");
+      return True;
+   } else {
+      VG_(debugLog)(1, "check-os-bitness", "i386 executable on i386 kernel\n");
+      return False;
+   }
 #elif defined(VGP_x86_dragonfly)
    Int oid[2], error;
    vki_size_t len;
@@ -1192,7 +1358,7 @@ void VG_(invalidate_icache) ( void *ptr, SizeT nbytes )
    Addr endaddr   = startaddr + nbytes;
    VG_(do_syscall2)(__NR_ARM_cacheflush, startaddr, endaddr);
 
-#  elif defined(VGP_arm64_linux)
+#  elif defined(VGP_arm64_linux) || defined(VGP_arm64_freebsd)
    // This arm64_linux section of this function VG_(invalidate_icache)
    // is copied from
    // https://github.com/armvixl/vixl/blob/master/src/a64/cpu-a64.cc
@@ -1226,11 +1392,12 @@ void VG_(invalidate_icache) ( void *ptr, SizeT nbytes )
    */
 
    // Ask what the I and D line sizes are
-   UInt cache_type_register;
+   ULong read_mrs;
    // Copy the content of the cache type register to a core register.
    __asm__ __volatile__ ("mrs %[ctr], ctr_el0" // NOLINT
-                         : [ctr] "=r" (cache_type_register));
+                         : [ctr] "=r" (read_mrs));
 
+   UInt cache_type_register = read_mrs;
    const Int kDCacheLineSizeShift = 16;
    const Int kICacheLineSizeShift = 0;
    const UInt kDCacheLineSizeMask = 0xf << kDCacheLineSizeShift;
@@ -1310,6 +1477,22 @@ void VG_(invalidate_icache) ( void *ptr, SizeT nbytes )
 #  elif defined(VGA_mips32) || defined(VGA_mips64)
    SysRes sres = VG_(do_syscall3)(__NR_cacheflush, (UWord) ptr,
                                  (UWord) nbytes, (UWord) 3);
+   vg_assert( !sr_isError(sres) );
+
+#  elif defined(VGA_nanomips)
+   __builtin___clear_cache(ptr, (char*)ptr + nbytes);
+
+#  elif defined(VGP_riscv64_linux)
+   /* Make data stores to the area visible to all RISC-V harts. */
+   __asm__ __volatile__("fence w,r");
+
+   /* Ask the kernel to execute fence.i on all harts to guarantee that an
+      instruction fetch on each hart will see any previous data stores visible
+      to the same hart. */
+   Addr   startaddr = (Addr)ptr;
+   Addr   endaddr   = startaddr + nbytes;
+   SysRes sres = VG_(do_syscall3)(__NR_riscv_flush_icache, startaddr, endaddr,
+                                  0 /*flags*/);
    vg_assert( !sr_isError(sres) );
 
 #  endif

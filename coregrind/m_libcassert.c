@@ -12,7 +12,7 @@
 
    This program is free software; you can redistribute it and/or
    modify it under the terms of the GNU General Public License as
-   published by the Free Software Foundation; either version 2 of the
+   published by the Free Software Foundation; either version 3 of the
    License, or (at your option) any later version.
 
    This program is distributed in the hope that it will be useful, but
@@ -21,14 +21,13 @@
    General Public License for more details.
 
    You should have received a copy of the GNU General Public License
-   along with this program; if not, write to the Free Software
-   Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
-   02111-1307, USA.
+   along with this program; if not, see <http://www.gnu.org/licenses/>.
 
    The GNU General Public License is contained in the file COPYING.
 */
 
 #include "pub_core_basics.h"
+#include "pub_core_debuglog.h"
 #include "pub_core_vki.h"
 #include "pub_core_vkiscnums.h"
 #include "pub_core_threadstate.h"
@@ -51,7 +50,8 @@
    ------------------------------------------------------------------ */
 
 #if defined(VGP_x86_linux) || defined(VGP_x86_darwin) \
-    || defined(VGP_x86_solaris) || defined(VGP_x86_dragonfly)
+    || defined(VGP_x86_solaris) || defined(VGP_x86_freebsd) \
+    || defined(VGP_x86_dragonfly)
 #  define GET_STARTREGS(srP)                              \
       { UInt eip, esp, ebp;                               \
         __asm__ __volatile__(                             \
@@ -68,7 +68,8 @@
         (srP)->misc.X86.r_ebp = ebp;                      \
       }
 #elif defined(VGP_amd64_linux) || defined(VGP_amd64_darwin) \
-      || defined(VGP_amd64_solaris) || defined(VGP_amd64_dragonfly)
+      || defined(VGP_amd64_solaris) || defined(VGP_amd64_freebsd) \
+      || defined(VGP_amd64_dragonfly)
 #  define GET_STARTREGS(srP)                              \
       { ULong rip, rsp, rbp;                              \
         __asm__ __volatile__(                             \
@@ -142,7 +143,7 @@
         (srP)->misc.ARM.r11 = block[4];                   \
         (srP)->misc.ARM.r7  = block[5];                   \
       }
-#elif defined(VGP_arm64_linux)
+#elif defined(VGP_arm64_linux) || defined(VGP_arm64_freebsd)
 #  define GET_STARTREGS(srP)                              \
       { ULong block[4];                                   \
         __asm__ __volatile__(                             \
@@ -163,19 +164,38 @@
       }
 #elif defined(VGP_s390x_linux)
 #  define GET_STARTREGS(srP)                              \
-      { ULong ia, sp, fp, lr;                             \
+      { ULong ia;                                         \
+        ULong block[11];                                  \
         __asm__ __volatile__(                             \
            "bras %0,0f;"                                  \
-           "0: lgr %1,15;"                                \
-           "lgr %2,11;"                                   \
-           "lgr %3,14;"                                   \
-           : "=r" (ia), "=r" (sp),"=r" (fp),"=r" (lr)     \
-           /* no read & clobber */                        \
+           "0: "                                          \
+           "stg %%r15, 0(%1);"                            \
+           "stg %%r11, 8(%1);"                            \
+           "stg %%r14, 16(%1);"                           \
+           "std %%f0, 24(%1);"                            \
+           "std %%f1, 32(%1);"                            \
+           "std %%f2, 40(%1);"                            \
+           "std %%f3, 48(%1);"                            \
+           "std %%f4, 56(%1);"                            \
+           "std %%f5, 64(%1);"                            \
+           "std %%f6, 72(%1);"                            \
+           "std %%f7, 80(%1);"                            \
+           : /* out */   "=&r" (ia)                       \
+           : /* in */    "a" (&block[0])                  \
+           : /* trash */ "memory"                         \
         );                                                \
         (srP)->r_pc = ia;                                 \
-        (srP)->r_sp = sp;                                 \
-        (srP)->misc.S390X.r_fp = fp;                      \
-        (srP)->misc.S390X.r_lr = lr;                      \
+        (srP)->r_sp = block[0];                           \
+        (srP)->misc.S390X.r_fp = block[1];                \
+        (srP)->misc.S390X.r_lr = block[2];                \
+        (srP)->misc.S390X.r_f0 = block[3];                \
+        (srP)->misc.S390X.r_f1 = block[4];                \
+        (srP)->misc.S390X.r_f2 = block[5];                \
+        (srP)->misc.S390X.r_f3 = block[6];                \
+        (srP)->misc.S390X.r_f4 = block[7];                \
+        (srP)->misc.S390X.r_f5 = block[8];                \
+        (srP)->misc.S390X.r_f6 = block[9];                \
+        (srP)->misc.S390X.r_f7 = block[10];               \
       }
 #elif defined(VGP_mips32_linux)
 #  define GET_STARTREGS(srP)                              \
@@ -227,6 +247,45 @@
         (srP)->misc.MIPS64.r31 = (ULong)ra;               \
         (srP)->misc.MIPS64.r28 = (ULong)gp;               \
       }
+#elif defined(VGP_nanomips_linux)
+#  define GET_STARTREGS(srP)                              \
+      { UInt pc=0, sp=0, fp=0, ra=0, gp=0;                \
+      asm("addiupc[32] %0, -4          \n\t"              \
+          "move %1, $sp                \n\t"              \
+          "move %2, $fp                \n\t"              \
+          "move %3, $ra                \n\t"              \
+          "move %4, $gp                \n\t"              \
+          : "=r" (pc),                                    \
+            "=r" (sp),                                    \
+            "=r" (fp),                                    \
+            "=r" (ra),                                    \
+            "=r" (gp)                                     \
+          );                                              \
+        (srP)->r_pc = (UInt)pc;                           \
+        (srP)->r_sp = (UInt)sp;                           \
+        (srP)->misc.MIPS32.r30 = (UInt)fp;                \
+        (srP)->misc.MIPS32.r31 = (UInt)ra;                \
+        (srP)->misc.MIPS32.r28 = (UInt)gp;                \
+      }
+#elif defined(VGP_riscv64_linux)
+#  define GET_STARTREGS(srP)                              \
+      { ULong pc, sp, fp, ra;                             \
+        __asm__ __volatile__(                             \
+           "jal %0, 0f;"                                  \
+           "0:\n"                                         \
+           "mv %1, sp;"                                   \
+           "mv %2, fp;"                                   \
+           "mv %3, ra;"                                   \
+           : "=r" (pc),                                   \
+             "=r" (sp),                                   \
+             "=r" (fp),                                   \
+             "=r" (ra)                                    \
+        );                                                \
+        (srP)->r_pc = pc;                                 \
+        (srP)->r_sp = sp;                                 \
+        (srP)->misc.RISCV64.r_fp = fp;                    \
+        (srP)->misc.RISCV64.r_ra = ra;                    \
+      }
 #else
 #  error Unknown platform
 #endif
@@ -245,6 +304,7 @@ static void exit_wrk( Int status, Bool gdbserver_call_allowed)
       if (status != 0 
           && VgdbStopAtiS(VgdbStopAt_ValgrindAbExit, VG_(clo_vgdb_stop_at))) {
          if (VG_(gdbserver_init_done)()) {
+            if (!(VG_(clo_launched_with_multi)))
             VG_(umsg)("(action at valgrind abnormal exit) vgdb me ... \n");
             VG_(gdbserver) (atid);
          } else {
@@ -272,7 +332,7 @@ void VG_(exit_now)( Int status )
 {
 #if defined(VGO_linux)
    (void)VG_(do_syscall1)(__NR_exit_group, status );
-#elif defined(VGO_darwin) || defined(VGO_solaris) || defined(VGO_dragonfly)
+#elif defined(VGO_darwin) || defined(VGO_solaris) || defined(VGO_freebsd)|| defined(VGO_dragonfly)
    (void)VG_(do_syscall1)(__NR_exit, status );
 #else
 #  error Unknown OS
@@ -309,7 +369,7 @@ static void print_thread_state (Bool stack_usage,
                    VG_SYSNUM_STRING(VG_(is_in_syscall_no)(i)));
    else
       syscallno[0] = 0;
-   VG_(printf)("\n%sThread %d: status = %s%s (lwpid %d)\n", prefix, i,
+   VG_(printf)("\n%sThread %u: status = %s%s (lwpid %d)\n", prefix, i,
                VG_(name_of_ThreadStatus)(VG_(threads)[i].status),
                syscallno,
                VG_(threads)[i].os_state.lwpid);
@@ -441,6 +501,14 @@ static void report_and_quit ( const HChar* report,
                           True,  // stack_usage
                           False, // exited_threads
                           startRegsIN);
+
+   if (VG_(debugLog_getLevel)() > 0) {
+      VG_(am_show_nsegments) (1, "report_and_quit");
+      (void) VG_(am_do_sync_check) ("report_and_quit", __FILE__, __LINE__);
+   }
+   if (VG_(clo_xml)) // After flushing outputs
+      VG_(printf_xml)("</valgrindoutput>\n");
+
    VG_(printf)(
       "\n"
       "Note: see also the FAQ in the source distribution.\n"
@@ -478,9 +546,6 @@ void VG_(assert_fail) ( Bool isCore, const HChar* expr, const HChar* file,
       bugs_to   = VG_(details).bug_reports_to;
    }
 
-   if (VG_(clo_xml))
-      VG_(printf_xml)("</valgrindoutput>\n");
-
    // Treat vg_assert2(0, "foo") specially, as a panicky abort
    if (VG_STREQ(expr, "0")) {
       VG_(printf)("\n%s: %s:%d (%s): the 'impossible' happened.\n",
@@ -510,8 +575,6 @@ __attribute__ ((noreturn))
 static void panic ( const HChar* name, const HChar* report, const HChar* str,
                     const UnwindStartRegs* startRegs )
 {
-   if (VG_(clo_xml))
-      VG_(printf_xml)("</valgrindoutput>\n");
    VG_(printf)("\n%s: the 'impossible' happened:\n   %s\n", name, str);
    report_and_quit(report, startRegs);
 }

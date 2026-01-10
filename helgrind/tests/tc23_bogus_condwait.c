@@ -7,7 +7,7 @@
 #include <semaphore.h>
 #include <stdio.h>
 #include <stdlib.h>
-#if defined(VGO_dragonfly)
+#if defined(VGO_freebsd) || defined(VGO_dragonfly)
 #include <sys/fcntl.h>
 #endif
 pthread_mutex_t mx[4]; 
@@ -18,9 +18,11 @@ static int my_sem_destroy(sem_t*);
 static int my_sem_wait(sem_t*); static int my_sem_post(sem_t*);
 void* rescue_me ( void* uu )
 {
+#if !defined(VGO_freebsd) &&  !defined(VGO_dragonfly)
   /* wait for, and unblock, the first wait */
   sleep(1);
   pthread_cond_signal( &cv );
+#endif
 
   /* wait for, and unblock, the second wait */
   sleep(1);
@@ -68,8 +70,10 @@ int main ( void )
   /* Do stupid things and hope that rescue_me gets us out of
      trouble */
 
+#if !defined(VGO_freebsd) && !defined(VGO_dragonfly)
   /* mx is bogus */
   r= pthread_cond_wait(&cv, (pthread_mutex_t*)(4 + (char*)&mx[0]) );
+#endif
 
   /* mx is not locked */
   r= pthread_cond_wait(&cv, &mx[3]);
@@ -86,7 +90,10 @@ int main ( void )
   r= pthread_join( my_rescuer, NULL ); assert(!r);
   r= pthread_join( grabber, NULL ); assert(!r);
 
-  r= my_sem_destroy( quit_now ); assert(!r);
+  r= my_sem_destroy( quit_now );
+#if !defined(VGO_darwin)
+  assert(!r);
+#endif
   return 0;
 }
 
@@ -101,7 +108,7 @@ static sem_t* my_sem_init (char* identity, int pshared, unsigned count)
 {
    sem_t* s;
 
-#if defined(VGO_linux) || defined(VGO_solaris)
+#if defined(VGO_linux) || defined(VGO_solaris) || defined(VGO_freebsd)
    s = malloc(sizeof(*s));
    if (s) {
       if (sem_init(s, pshared, count) < 0) {

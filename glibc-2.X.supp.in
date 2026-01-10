@@ -213,6 +213,12 @@
    obj:/*libc-@GLIBC_VERSION@*.so
 }
 
+{
+   libaio-CentOS-7.9-(PPC)
+   Memcheck:Addr4
+   fun:io_getevents
+}
+
 ##----------------------------------------------------------------------##
 # MontaVista Linux 4.0.1 on ppc32
 {
@@ -247,4 +253,38 @@
    dl-trampoline-sse-avx
    Memcheck:Cond
    fun:_dl_runtime_resolve_avx_slow
+}
+
+# The main thread dynamic thread vector, DTV, which contains pointers
+# to thread local variables, isn't freed.  There are a couple of call
+# patterns that can cause it to be extended.
+{
+  dtv-addr-tail
+  Memcheck:Leak
+  match-leak-kinds: possible,reachable
+  fun:malloc
+  fun:tls_get_addr_tail*
+  fun:__tls_get_addr
+}
+
+{
+  dtv-addr-resize
+  Memcheck:Leak
+  match-leak-kinds: possible,reachable
+  fun:malloc
+  fun:_dl_resize_dtv
+  fun:_dl_update_slotinfo
+  fun:update_get_addr
+  fun:__tls_get_addr
+}
+
+{
+  dtv-addr-init
+  Memcheck:Leak
+  match-leak-kinds: possible,reachable
+  ...
+  fun:allocate_dtv_entry
+  fun:allocate_and_init
+  fun:tls_get_addr_tail*
+  fun:__tls_get_addr
 }

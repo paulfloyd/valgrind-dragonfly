@@ -11,6 +11,9 @@
 
 #undef PLAT_x86_darwin
 #undef PLAT_amd64_darwin
+#undef PLAT_x86_freebsd
+#undef PLAT_amd64_freebsd
+#undef PLAT_arm64_freebsd
 #undef PLAT_x86_dragonfly
 #undef PLAT_amd64_dragonfly
 #undef PLAT_x86_linux
@@ -20,6 +23,7 @@
 #undef PLAT_arm_linux
 #undef PLAT_s390x_linux
 #undef PLAT_mips32_linux
+#undef PLAT_riscv64_linux
 #undef PLAT_x86_solaris
 #undef PLAT_amd64_solaris
 
@@ -27,6 +31,12 @@
 #  define PLAT_x86_darwin 1
 #elif defined(__APPLE__) && defined(__x86_64__)
 #  define PLAT_amd64_darwin 1
+#elif defined(__FreeBSD__) && defined(__i386__)
+#  define PLAT_x86_freebsd 1
+#elif defined(__FreeBSD__) && defined(__amd64__)
+#  define PLAT_amd64_freebsd 1
+#elif defined(__FreeBSD__) && defined(__aarch64__)
+#  define PLAT_arm64_freebsd 1
 #elif defined(__DragonFly__) && defined(__i386__)
 #  define PLAT_x86_dragonfly 1
 #elif defined(__DragonFly__) && defined(__amd64__)
@@ -47,6 +57,10 @@
 #  define PLAT_s390x_linux 1
 #elif defined(__linux__) && defined(__mips__)
 #  define PLAT_mips32_linux 1
+#elif defined(__linux__) && defined(__nanomips__)
+#  define PLAT_nanomips_linux 1
+#elif defined(__linux__) && defined(__riscv) && (__riscv_xlen == 64)
+#  define PLAT_riscv64_linux 1
 #elif defined(__sun__) && defined(__i386__)
 #  define PLAT_x86_solaris 1
 #elif defined(__sun__) && defined(__x86_64__)
@@ -57,6 +71,7 @@
 #if defined(PLAT_amd64_linux) || defined(PLAT_x86_linux) \
     || defined(PLAT_amd64_darwin) || defined(PLAT_x86_darwin) \
     || defined(PLAT_amd64_solaris) || defined(PLAT_x86_solaris) \
+    || defined(PLAT_amd64_freebsd) || defined(PLAT_x86_freebsd) \
     || defined(PLAT_amd64_dragonfly) || defined(PLAT_x86_dragonfly)
 #  define XCHG_M_R(_addr,_lval) \
      __asm__ __volatile__( \
@@ -79,7 +94,7 @@
         __asm__ __volatile__(                                \
            "0: l   0,%[global]\n\t"                          \
            "   cs  0,%[local],%[global]\n\t"                 \
-           "   bne 0b\n\t"                                   \
+           "   jne 0b\n\t"                                   \
            "   lr  %[local],0\n\t"                           \
            : /*out*/ [global]"+m"(_addr), [local]"+d"(_lval) \
            : /*in*/                                          \
@@ -105,9 +120,26 @@
 
 #  define XCHG_M_R_with_redundant_LOCK(_addr,_lval) \
       XCHG_M_R(_addr,_lval)
+#elif defined(PLAT_nanomips_linux)
+#  define XCHG_M_R(_addr,_lval)                              \
+     __asm__ __volatile__(                                   \
+        "move $t0, %2\n"                                     \
+        "move $t1, %1\n"                                     \
+        "ll $t2, 0($t1)\n"                                   \
+        "sc $t0, 0($t1)\n"                                   \
+        "move %0, $t2\n"                                     \
+        : /*out*/ "=r"(_lval)                                \
+        : /*in*/  "r"(&_addr), "r"(_lval)                    \
+        : "$t0", "$t1", "$t1", "memory"                      \
+     )
+
+#  define XCHG_M_R_with_redundant_LOCK(_addr,_lval) \
+      XCHG_M_R(_addr,_lval)
 
 #elif defined(PLAT_ppc32_linux) || defined(PLAT_ppc64_linux) \
-      || defined(PLAT_arm_linux) || defined(PLAT_arm64_linux)
+      || defined(PLAT_arm_linux) || defined(PLAT_arm64_linux) \
+      || defined(PLAT_arm64_freebsd) \
+      || defined(PLAT_riscv64_linux)
 #  if defined(HAVE_BUILTIN_ATOMIC)
 #    define XCHG_M_R(_addr,_lval)                                           \
         do {                                                                \

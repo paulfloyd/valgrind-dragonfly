@@ -12,7 +12,7 @@
 
    This program is free software; you can redistribute it and/or
    modify it under the terms of the GNU General Public License as
-   published by the Free Software Foundation; either version 2 of the
+   published by the Free Software Foundation; either version 3 of the
    License, or (at your option) any later version.
 
    This program is distributed in the hope that it will be useful, but
@@ -21,9 +21,7 @@
    General Public License for more details.
 
    You should have received a copy of the GNU General Public License
-   along with this program; if not, write to the Free Software
-   Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
-   02111-1307, USA.
+   along with this program; if not, see <http://www.gnu.org/licenses/>.
 
    The GNU General Public License is contained in the file COPYING.
 */
@@ -108,6 +106,13 @@ SysRes VG_(mk_SysRes_SuccessEx) ( UWord res, UWord resEx ) {
    safely test with -4095.
 */
 
+SysRes VG_(mk_SysRes_nanomips_linux) ( UWord a0 ) {
+   SysRes res;
+   res._isError = (a0 > 0xFFFFF000ul);
+   res._val = a0;
+   return res;
+}
+
 SysRes VG_(mk_SysRes_x86_linux) ( Int val ) {
    SysRes res;
    res._isError = val >= -4095 && val <= -1;
@@ -140,11 +145,29 @@ SysRes VG_(mk_SysRes_ppc32_linux) ( UInt val, UInt cr0so ) {
    return res;
 }
 
-/* As per ppc32 version, cr0.so must be in l.s.b. of 2nd arg */
-SysRes VG_(mk_SysRes_ppc64_linux) ( ULong val, ULong cr0so ) {
+/* As per ppc32 version, for the sc instruction cr0.so must be in
+   l.s.b. of 2nd arg.
+   For the scv 0 instruction, the return value indicates failure if
+   it is -4095..-1 (i.e., it is >= -MAX_ERRNO (-4095) as an unsigned
+   comparison), in which case the error value is the negated return value. */
+SysRes VG_(mk_SysRes_ppc64_linux) ( ULong val, ULong cr0so, UInt flag ) {
    SysRes res;
+
+   if (flag == SC_FLAG) {
+      /* sc instruction */
    res._isError = (cr0so & 1) != 0;
    res._val     = val;
+   } else if (flag == SCV_FLAG) {
+      /* scv instruction */
+      if ( (Long)val >= -4095 && (Long)val <= -1) {
+         res._isError = True;
+         res._val = (ULong)(-val);
+      } else {
+         res._isError = False;
+         res._val = (ULong)(val);
+      }
+   } else
+      vg_assert(0);
    return res;
 }
 
@@ -181,7 +204,33 @@ SysRes VG_(mk_SysRes_arm64_linux) ( Long val ) {
    return res;
 }
 
+SysRes VG_(mk_SysRes_riscv64_linux) ( Long val ) {
+   SysRes res;
+   res._isError = val >= -4095 && val <= -1;
+   if (res._isError) {
+      res._val = (ULong)(-val);
+   } else {
+      res._val = (ULong)val;
+   }
+   return res;
+}
+
 /* Generic constructors. */
+SysRes VG_(mk_SysRes_Success) ( UWord res ) {
+   SysRes r;
+   r._isError = False;
+   r._val     = res;
+   return r;
+}
+
+#if defined(VGP_nanomips_linux)
+SysRes VG_(mk_SysRes_Error) ( UWord err ) {
+   SysRes r;
+   r._isError = True;
+   r._val     = (UWord)(-(Word)err);
+   return r;
+}
+#else
 SysRes VG_(mk_SysRes_Error) ( UWord err ) {
    SysRes r;
    r._isError = True;
@@ -189,12 +238,7 @@ SysRes VG_(mk_SysRes_Error) ( UWord err ) {
    return r;
 }
 
-SysRes VG_(mk_SysRes_Success) ( UWord res ) {
-   SysRes r;
-   r._isError = False;
-   r._val     = res;
-   return r;
-}
+#endif
 
 
 #elif defined(VGO_darwin)
@@ -332,9 +376,25 @@ SysRes VG_(mk_SysRes_amd64_solaris) ( Bool isErr, ULong val, ULong val2 )
 }
 
 
-#elif defined(VGO_dragonfly)
+#elif defined(VGO_freebsd)
 
-SysRes VG_(mk_SysRes_x86_dragonfly) ( UInt val, UInt val2, Bool err ) {
+SysRes VG_(mk_SysRes_x86_freebsd) ( UInt val, UInt val2, Bool err ) {
+   SysRes r;
+   r._isError = err;
+   r._val = val;
+   r._val2 = val2;
+   return r;
+}
+
+SysRes VG_(mk_SysRes_amd64_freebsd) ( ULong val, ULong val2, Bool err ) {
+   SysRes r;
+   r._isError = err;
+   r._val = val;
+   r._val2 = val2;
+   return r;
+}
+
+SysRes VG_(mk_SysRes_arm64_freebsd) ( ULong val, ULong val2, Bool err ) {
    SysRes r;
    r._isError = err;
    r._val = val;
@@ -562,6 +622,12 @@ asm(
 "        addi         2,2,.TOC.-0b@l\n"
 "        .localentry do_syscall_WRK, .-do_syscall_WRK\n"
 "#endif"                            "\n"
+/* Check which system call instruction to issue*/
+"        ld   8, 56(3)\n"  /* arg 7 holds sc/scv flag */
+"        cmpdi 8,1\n"      /* check sc/scv flag not equal to SC_FLAG*/
+"        bne  issue_scv\n"
+
+/* setup and issue the sc instruction */
 "        std  3,-16(1)\n"  /* stash arg */
 "        ld   8, 48(3)\n"  /* sc arg 6 */
 "        ld   7, 40(3)\n"  /* sc arg 5 */
@@ -577,6 +643,38 @@ asm(
 "        srwi 3,3,28\n"
 "        andi. 3,3,1\n"
 "        std  3,8(5)\n"    /* argblock[1] = cr0.s0 & 1 */
+"        blr\n"            /* return */
+
+/*  setup to do scv instruction */
+"issue_scv: "
+/* The scv instruction requires a new stack frame */
+"        stdu    1,-80(1)\n"
+"        std     27,40(1)\n" /* save r27 to stack frame */
+"        mflr    27\n"       /* Get link register */
+"        std     27,16(1)\n" /* Save link register */
+
+/* setup and issue the scv instruction */
+"        std  3,-16(1)\n"  /* stash arg */
+"        ld   8, 48(3)\n"  /* sc arg 6 */
+"        ld   7, 40(3)\n"  /* sc arg 5 */
+"        ld   6, 32(3)\n"  /* sc arg 4 */
+"        ld   5, 24(3)\n"  /* sc arg 3 */
+"        ld   4, 16(3)\n"  /* sc arg 2 */
+"        ld   0,  0(3)\n"  /* sc number */
+"        ld   3,  8(3)\n"  /* sc arg 1 */
+
+"        .machine push\n"
+"        .machine \"power9\"\n"
+"        scv  0\n"
+"        .machine pop\n"
+"        ld   5,-16(1)\n"  /* reacquire argblock ptr (r5 is caller-save) */
+"        std  3,0(5)\n"    /* argblock[0] = r3 */
+
+/* pop off stack frame */
+"        ld      27,16(1)\n"        /* Fetch LR from frame */
+"        mtlr    27\n"              /* restore LR */
+"        ld      27,40(1)\n"        /* restore r27 from stack frame */
+"        addi    1,1,80\n"
 "        blr\n"
 "        .size do_syscall_WRK, .-do_syscall_WRK\n"
 );
@@ -636,9 +734,9 @@ asm(
 ".previous\n"
 );
 
-#elif defined(VGP_x86_dragonfly)
+#elif defined(VGP_x86_freebsd)
 /* Incoming args (syscall number + up to 8 args) are on the stack.
-   Dragonfly has a syscall called 'syscall' that takes all args (including
+   FreeBSD has a syscall called 'syscall' that takes all args (including
    the syscall number) off the stack.  Since we're called, the return
    address is on the stack as expected, so we can just call syscall(2)
    and it Just Works.  Error is when carry is set.
@@ -662,6 +760,88 @@ asm(
 "      ret\n"
 ".previous\n"
 );
+
+#elif defined(VGP_amd64_freebsd)
+/* Convert function calling convention --> SYSCALL_STD calling
+   convention.
+   Last stack arguments need to be pushed first, hence
+   a8 is pushed before a7.
+ */
+extern UWord do_syscall_WRK (
+          UWord syscall_no,    /* %rdi */
+          UWord a1,            /* %rsi */
+          UWord a2,            /* %rdx */
+          UWord a3,            /* %rcx */
+          UWord a4,            /* %r8 */
+          UWord a5,            /* %r9 */
+          UWord a6,            /* 8(%rsp) */
+          UWord a7,            /* 16(%rsp) */
+          UInt *flags,         /* 24(%rsp) */
+          UWord *rv2           /* 32(%rsp) */
+       );
+asm(
+".text\n"
+"do_syscall_WRK:\n"
+"      pushq   %rbp\n"
+"      movq    %rsp, %rbp\n"
+"      movq    %rdi, %rax\n"    /* syscall_no */
+"      movq    %rsi, %rdi\n"    /* a1 */
+"      movq    %rdx, %rsi\n"    /* a2 */
+"      movq    %rcx, %rdx\n"    /* a3 */
+"      movq    %r8,  %r10\n"    /* a4 */
+"      movq    %r9,  %r8\n"     /* a5 */
+"      movq    16(%rbp), %r9\n" /* a6 last register arg from stack, account for %rbp */
+"      movq    24(%rbp), %r11\n" /* a7 from stack */
+"      pushq   %r11\n"
+"      subq    $8,%rsp\n"       /* fake return addr */
+"      syscall\n"
+"      jb      1f\n"
+"      movq    40(%rbp),%rsi\n" /* success */
+"      movq    %rdx, (%rsi)\n"  /* second return value */
+"      movq    %rbp, %rsp\n"
+"      popq    %rbp\n"
+"      ret\n"
+"1:\n"                          /* error path */
+"      movq    32(%rbp), %rsi\n" /* flags */
+"      movl    $1,(%rsi)\n"
+"      movq    %rbp, %rsp\n"
+"      popq    %rbp\n"
+"      ret\n"
+".previous\n"
+);
+
+#elif defined(VGP_arm64_freebsd)
+
+/*
+ * Arguments a1 to a7 are in registers x0 to x6.
+ * Which is just what we want for a syscall.
+ *
+ * The syscall number is in x9
+ * The flags are at the top of the stack, sp and
+ * second return value at sp+8.
+ */
+
+extern UWord do_syscall_WRK (
+   UWord a1, UWord a2, UWord a3,
+   UWord a4, UWord a5, UWord a6,
+   UWord a7, UWord syscall_no,
+   UInt *flags,  UWord *rv2
+   );
+asm(
+   ".text\n"
+   ".globl do_syscall_WRK\n"
+   "do_syscall_WRK:\n"
+   "        mov x8, x9\n"             // get the syscall number from x9
+   "        svc  0x0\n"               // do the syscall
+   "        mov  x9, 1\n"             // flags for error will be 1 or 0
+   "        csel x9, x9, xzr, cs\n"   // conditionally select 1 or 0 into x9
+   "        ldr  x10, [sp]\n"         // load the address of flags
+   "        str  w9, [x10]\n"         // store flags result
+   "        ldr  x10, [sp, #8]\n"     // load the addres of rv2
+   "        str  x1, [x10]\n"         // store rv2 result
+   "        ret\n"
+   ".previous\n"
+   );
 
 #elif defined(VGP_amd64_dragonfly)
 extern UWord do_syscall_WRK (
@@ -888,7 +1068,7 @@ static UWord do_syscall_WRK (
 */
 extern int do_syscall_WRK (
           int a1, int a2, int a3,
-          int a4, int a5, int a6, int syscall_no, UWord *err,
+          int a4, int a5, int a6, int a7, int syscall_no, UWord *err,
           UWord *valHi, UWord* valLo
        );
 asm (
@@ -898,13 +1078,13 @@ asm (
    ".set push                              \n\t"
    ".set noreorder                         \n\t"
    "do_syscall_WRK:                        \n\t"
-   "   lw $2, 24($29)                      \n\t"
+   "	lw $2, 28($29)                       \n\t"
    "   syscall                             \n\t"
-   "   lw $8, 28($29)                      \n\t"
+   "	lw $8, 32($29)                       \n\t"
    "   sw $7, ($8)                         \n\t"
-   "   lw $8, 32($29)                      \n\t"
+   "	lw $8, 36($29)                       \n\t"
    "   sw $3, ($8)                         \n\t" /* store valHi */
-   "   lw $8, 36($29)                      \n\t"
+   "	lw $8, 40($29)                       \n\t"
    "   jr $31                              \n\t"
    "   sw $2, ($8)                         \n\t" /* store valLo */
    ".size do_syscall_WRK, .-do_syscall_WRK \n\t"
@@ -914,7 +1094,7 @@ asm (
 
 #elif defined(VGP_mips64_linux)
 extern RegWord do_syscall_WRK ( RegWord a1, RegWord a2, RegWord a3, RegWord a4,
-                                RegWord a5, RegWord a6, RegWord syscall_no,
+                                RegWord a5, RegWord a6, RegWord a7, RegWord syscall_no,
                                 RegWord* V1_A3_val );
 asm (
    ".text                                  \n\t"
@@ -923,18 +1103,66 @@ asm (
    ".set push                              \n\t"
    ".set noreorder                         \n\t"
    "do_syscall_WRK:                        \n\t"
-   "   daddiu $29, $29, -8                 \n\t"
-   "   sd $11, 0($29)                      \n\t"
-   "   move $2, $10                        \n\t"
+   "   move $2, $11                        \n\t"
    "   syscall                             \n\t"
-   "   ld $11, 0($29)                      \n\t"
-   "   daddiu $29, $29, 8                  \n\t"
-   "   sd $3, 0($11)                       \n\t" /* store v1 in last param */
+#  if defined(_ABI64)
+   "   ld $12, 0($29)                      \n\t"
+#  elif defined(_ABIN32)
+   "   lw $12, 0($29)                      \n\t"
+#  endif
+   "   sd $3, 0($12)                       \n\t" /* store v1 in V1_A3_val */
    "   jr $31                              \n\t"
-   "   sd $7, 8($11)                       \n\t" /* store a3 in last param */
+   "   sd $7, 8($12)                       \n\t" /* store a3 in V1_A3_val */
    ".size do_syscall_WRK, .-do_syscall_WRK \n\t"
    ".set pop                               \n\t"
    ".previous                              \n\t"
+);
+
+#elif defined(VGP_nanomips_linux)
+extern void do_syscall_WRK (
+         RegWord a1, RegWord a2, RegWord a3,
+         RegWord a4, RegWord a5, RegWord a6,
+         RegWord syscall_no, RegWord *res_a0);
+asm (
+   ".text                                  \n\t"
+   ".globl do_syscall_WRK                  \n\t"
+   ".type  do_syscall_WRK, @function       \n\t"
+   ".set push                              \n\t"
+   ".set noreorder                         \n\t"
+   "do_syscall_WRK:                        \n\t"
+   "   save 32, $a7                        \n\t"
+   "   move $t4, $a6                       \n\t"
+   "   syscall[32]                         \n\t"
+   "   restore 32, $a7                     \n\t"
+   "   sw $a0, 0($a7)                      \n\t"
+   "   jrc $ra                             \n\t"
+   ".size do_syscall_WRK, .-do_syscall_WRK \n\t"
+   ".set pop                               \n\t"
+   ".previous                              \n\t"
+);
+
+#elif defined(VGP_riscv64_linux)
+/* Calling convention is: args in a0-a5, sysno in a7, return value in a0.
+   Return value follows the usual convention that -4095 .. -1 (both inclusive)
+   is an error value. All other values are success values.
+
+   Registers a0 to a5 remain unchanged, but syscall_no is in a6 and needs to be
+   moved to a7.
+*/
+extern UWord do_syscall_WRK (
+          UWord a1, UWord a2, UWord a3,
+          UWord a4, UWord a5, UWord a6,
+          UWord syscall_no
+       );
+asm(
+".text\n"
+".globl do_syscall_WRK\n"
+"do_syscall_WRK:\n"
+"        mv a7, a6\n"
+"        li a6, 0\n"
+"        ecall\n"
+"        ret\n"
+".previous\n"
 );
 
 #elif defined(VGP_x86_solaris)
@@ -1044,6 +1272,28 @@ SysRes VG_(do_syscall) ( UWord sysno, RegWord a1, RegWord a2, RegWord a3,
    UWord val = do_syscall_WRK(sysno,a1,a2,a3,a4,a5,a6);
    return VG_(mk_SysRes_amd64_linux)( val );
 
+#  elif defined(VGP_x86_freebsd)
+   ULong val;
+   UInt err = 0;
+   val = do_syscall_WRK(sysno, a1, a2, a3, a4, a5,
+                        a6, a7, a8, &err);
+   return VG_(mk_SysRes_x86_freebsd)( (UInt)val, (UInt)(val>>32), (err & 1) != 0 ? True : False);
+
+#  elif defined(VGP_amd64_freebsd)
+   UWord val;
+   UWord val2 = 0;
+   UInt err = 0;
+   val = do_syscall_WRK(sysno, a1, a2, a3, a4, a5,
+                        a6, a7, &err, &val2);
+   return VG_(mk_SysRes_amd64_freebsd)( val, val2, (err & 1) != 0 ? True : False);
+
+#  elif defined(VGP_arm64_freebsd)
+   UWord val;
+   UWord val2 = 0;
+   UInt err = 0;
+   val = do_syscall_WRK(a1, a2, a3, a4, a5,
+                        a6, a7, sysno, &err, &val2);
+   return VG_(mk_SysRes_arm64_freebsd)( val, val2, (err & 1) != 0 ? True : False);
 #  elif defined(VGP_x86_dragonfly)
    ULong val;
    UInt err = 0;
@@ -1071,7 +1321,11 @@ SysRes VG_(do_syscall) ( UWord sysno, RegWord a1, RegWord a2, RegWord a3,
    return VG_(mk_SysRes_ppc32_linux)( val, cr0so );
 
 #  elif defined(VGP_ppc64be_linux) || defined(VGP_ppc64le_linux)
-   ULong argblock[7];
+   ULong argblock[8];
+   /* PPC system calls have at most 6 arguments.  The Valgrind infrastructure
+      supports 8 system call arguments.  Argument 7 is used on PPC LE to pass
+      the flag indicating if the sc or scv instruction should be used for the
+      system call.  */
    argblock[0] = sysno;
    argblock[1] = a1;
    argblock[2] = a2;
@@ -1079,8 +1333,9 @@ SysRes VG_(do_syscall) ( UWord sysno, RegWord a1, RegWord a2, RegWord a3,
    argblock[4] = a4;
    argblock[5] = a5;
    argblock[6] = a6;
+   argblock[7] = a7;
    do_syscall_WRK( &argblock[0] );
-   return VG_(mk_SysRes_ppc64_linux)( argblock[0], argblock[1] );
+   return VG_(mk_SysRes_ppc64_linux)( argblock[0], argblock[1], a7 );
 
 #  elif defined(VGP_arm_linux)
    UWord val = do_syscall_WRK(a1,a2,a3,a4,a5,a6,sysno);
@@ -1160,17 +1415,26 @@ SysRes VG_(do_syscall) ( UWord sysno, RegWord a1, RegWord a2, RegWord a3,
    UWord err   = 0;
    UWord valHi = 0;
    UWord valLo = 0;
-   (void) do_syscall_WRK(a1,a2,a3,a4,a5,a6, sysno,&err,&valHi,&valLo);
+   (void) do_syscall_WRK(a1, a2, a3, a4, a5, a6, a7, sysno, &err, &valHi, &valLo);
    return VG_(mk_SysRes_mips32_linux)( valLo, valHi, (ULong)err );
 
 #elif defined(VGP_mips64_linux)
    RegWord v1_a3[2];
    v1_a3[0] = 0xFF00;
    v1_a3[1] = 0xFF00;
-   RegWord V0 = do_syscall_WRK(a1,a2,a3,a4,a5,a6,sysno,v1_a3);
+   RegWord V0 = do_syscall_WRK(a1, a2, a3, a4, a5, a6, a7, sysno, v1_a3);
    RegWord V1 = (RegWord)v1_a3[0];
    RegWord A3 = (RegWord)v1_a3[1];
    return VG_(mk_SysRes_mips64_linux)( V0, V1, A3 );
+
+#elif defined(VGP_nanomips_linux)
+   RegWord reg_a0 = 0;
+   do_syscall_WRK(a1, a2, a3, a4, a5, a6, sysno, &reg_a0);
+   return VG_(mk_SysRes_nanomips_linux)(reg_a0);
+
+#  elif defined(VGP_riscv64_linux)
+   UWord val = do_syscall_WRK(a1, a2, a3, a4, a5, a6, sysno);
+   return VG_(mk_SysRes_riscv64_linux)(val);
 
 #  elif defined(VGP_x86_solaris)
    UInt val, val2, err = False;
@@ -1284,6 +1548,9 @@ const HChar* VG_(strerror) ( UWord errnum )
    case VKI_EOVERFLOW:   return "Value too large for defined data type";
 #     if defined(VKI_ERESTARTSYS)
       case VKI_ERESTARTSYS: return "ERESTARTSYS";
+#     endif
+#     if defined(VKI_ERESTART)
+      case VKI_ERESTART: return "ERESTART";
 #     endif
    default:              return "VG_(strerror): unknown error";
    }

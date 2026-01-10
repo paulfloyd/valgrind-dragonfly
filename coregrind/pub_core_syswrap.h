@@ -12,7 +12,7 @@
 
    This program is free software; you can redistribute it and/or
    modify it under the terms of the GNU General Public License as
-   published by the Free Software Foundation; either version 2 of the
+   published by the Free Software Foundation; either version 3 of the
    License, or (at your option) any later version.
 
    This program is distributed in the hope that it will be useful, but
@@ -21,9 +21,7 @@
    General Public License for more details.
 
    You should have received a copy of the GNU General Public License
-   along with this program; if not, write to the Free Software
-   Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
-   02111-1307, USA.
+   along with this program; if not, see <http://www.gnu.org/licenses/>.
 
    The GNU General Public License is contained in the file COPYING.
 */
@@ -53,6 +51,8 @@ extern void VG_(clear_syscallInfo) ( ThreadId tid );
 
 // Returns True if the given thread is currently in a system call
 extern Bool VG_(is_in_syscall) ( ThreadId tid );
+
+extern Bool VG_(is_in_kernel_restart_syscall) ( ThreadId tid );
 
 // If VG_(is_in_syscall) (tid), returns the sysno the given thread is in
 extern Word VG_(is_in_syscall_no) (ThreadId tid );
@@ -100,6 +100,16 @@ extern void VG_(change_mapping_ownership)(Addr addr, Bool once_only);
 extern Bool VG_(setup_client_dataseg)(void);
 extern void VG_(track_client_dataseg)(ThreadId tid);
 #endif
+
+#if defined(VGO_freebsd)
+extern Bool VG_(get_capability_mode)(void);
+#endif
+
+// For the core errors
+extern Bool fd_eq_Error (VgRes, const Error*, const Error*);
+extern void fd_before_pp_Error (const Error*);
+extern void fd_pp_Error (const Error*);
+extern UInt fd_update_extra (const Error*);
 
 #endif   // __PUB_CORE_SYSWRAP_H
 

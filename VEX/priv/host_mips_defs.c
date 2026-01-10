@@ -8,11 +8,10 @@
    framework.
 
    Copyright (C) 2010-2017 RT-RK
-      mips-valgrind@rt-rk.com
 
    This program is free software; you can redistribute it and/or
    modify it under the terms of the GNU General Public License as
-   published by the Free Software Foundation; either version 2 of the
+   published by the Free Software Foundation; either version 3 of the
    License, or (at your option) any later version.
 
    This program is distributed in the hope that it will be useful, but
@@ -21,9 +20,7 @@
    General Public License for more details.
 
    You should have received a copy of the GNU General Public License
-   along with this program; if not, write to the Free Software
-   Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
-   02111-1307, USA.
+   along with this program; if not, see <http://www.gnu.org/licenses/>.
 
    The GNU General Public License is contained in the file COPYING.
 */
@@ -3319,7 +3316,7 @@ static UChar *mkFormS(UChar * p, UInt opc1, UInt rRD, UInt rRS, UInt rRT,
    vassert(rRS < 0x20);
    vassert(rRT < 0x20);
    vassert(opc2 <= 0x3F);
-   vassert(sa >= 0 && sa <= 0x3F);
+   vassert(sa <= 0x3F);
 
    theInstr = ((opc1 << 26) | (rRS << 21) | (rRT << 16) | (rRD << 11) |
               ((sa & 0x1F) << 6) | (opc2));
@@ -3373,7 +3370,7 @@ static UChar *mkForm3R(UChar *p, UInt op, UInt df, UInt wd, UInt ws, UInt wt) {
    return emit32(p, theInstr);
 }
 
-static UChar *mkFormVEC(UChar *p, UInt op, UInt ws, UInt wt, UInt wd) {
+static UChar *mkFormVEC(UChar *p, UInt op, UInt wt, UInt ws, UInt wd) {
    UInt theInstr;
    vassert(op  < 0x20);
    vassert(wt  < 0x20);
@@ -3396,10 +3393,10 @@ static UChar *mkFormBIT(UChar *p, UInt op, UInt df, UInt ms, UInt ws, UInt wd) {
    switch (df) {
       case 0:
          dfm |= 0x10;
-
+         /* fallthrough */
       case 1:
          dfm |= 0x20;
-
+         /* fallthrough */
       case 2:
          dfm |= 0x40;
    }
@@ -3771,7 +3768,7 @@ static UChar *mkMoveReg(UChar * p, UInt r_dst, UInt r_src)
 Int emit_MIPSInstr ( /*MB_MOD*/Bool* is_profInc,
                      UChar* buf, Int nbuf, const MIPSInstr* i,
                      Bool mode64,
-                     VexEndness endness_host,
+                     const VexArchInfo* archinfo_host,
                      const void* disp_cp_chain_me_to_slowEP,
                      const void* disp_cp_chain_me_to_fastEP,
                      const void* disp_cp_xindir,

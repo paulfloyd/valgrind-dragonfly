@@ -8,11 +8,10 @@
    framework.
 
    Copyright (C) 2010-2017 RT-RK
-      mips-valgrind@rt-rk.com
 
    This program is free software; you can redistribute it and/or
    modify it under the terms of the GNU General Public License as
-   published by the Free Software Foundation; either version 2 of the
+   published by the Free Software Foundation; either version 3 of the
    License, or (at your option) any later version.
 
    This program is distributed in the hope that it will be useful, but
@@ -21,9 +20,7 @@
    General Public License for more details.
 
    You should have received a copy of the GNU General Public License
-   along with this program; if not, write to the Free Software
-   Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
-   02111-1307, USA.
+   along with this program; if not, see <http://www.gnu.org/licenses/>.
 
    The GNU General Public License is contained in the file COPYING.
 */
@@ -190,6 +187,8 @@ void LibVEX_GuestMIPS32_initialise( /*OUT*/ VexGuestMIPS32State * vex_state)
    vex_state->guest_w1.w64[1] = 0;
    vex_state->guest_w2.w64[0] = 0;
    vex_state->guest_w2.w64[1] = 0;
+
+   vex_state->guest_IP_AT_SYSCALL = 0;
 }
 
 void LibVEX_GuestMIPS64_initialise ( /*OUT*/ VexGuestMIPS64State * vex_state )
@@ -296,6 +295,8 @@ void LibVEX_GuestMIPS64_initialise ( /*OUT*/ VexGuestMIPS64State * vex_state )
 
    vex_state->guest_LLaddr = 0xFFFFFFFFFFFFFFFFULL;
    vex_state->guest_LLdata = 0;
+
+   vex_state->guest_IP_AT_SYSCALL = 0;
 
    vex_state->guest_MSACSR = 0;
 }
@@ -1118,6 +1119,7 @@ extern UInt mips_dirtyhelper_calculate_MSACSR ( void* gs, UInt ws, UInt wt,
 
       case FSULTD:
          ASM_VOLATILE_MSA_BINARY(fsult.d);
+         break;
 
       case FMAXW:
          ASM_VOLATILE_MSA_BINARY(fmax.w);
@@ -1173,6 +1175,7 @@ extern UInt mips_dirtyhelper_calculate_MSACSR ( void* gs, UInt ws, UInt wt,
 
       case FRINTD:
          ASM_VOLATILE_MSA_UNARY(frint.d);
+         break;
 
       case FTRUNCUW:
          ASM_VOLATILE_MSA_UNARY(ftrunc_u.w);
@@ -1275,7 +1278,7 @@ extern UInt mips_dirtyhelper_calculate_MSACSR ( void* gs, UInt ws, UInt wt,
    return ret;
 }
 
-extern UInt mips_dirtyhelper_get_MSAIR() {
+extern UInt mips_dirtyhelper_get_MSAIR(void) {
    UInt ret = 0;
 /* GCC 4.8 and later support MIPS MSA. */
 #if defined(__mips__) && (defined(__clang__) || (GCC_VERSION >= 408))

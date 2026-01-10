@@ -12,7 +12,7 @@
 
    This program is free software; you can redistribute it and/or
    modify it under the terms of the GNU General Public License as
-   published by the Free Software Foundation; either version 2 of the
+   published by the Free Software Foundation; either version 3 of the
    License, or (at your option) any later version.
 
    This program is distributed in the hope that it will be useful, but
@@ -21,9 +21,7 @@
    General Public License for more details.
 
    You should have received a copy of the GNU General Public License
-   along with this program; if not, write to the Free Software
-   Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
-   02111-1307, USA.
+   along with this program; if not, see <http://www.gnu.org/licenses/>.
 
    The GNU General Public License is contained in the file COPYING.
 */
@@ -238,6 +236,7 @@ struct vki_sigcontext {
 #define VKI_MAP_ANONYMOUS	0x20	/* don't use a file */
 #define VKI_MAP_32BIT	0x40		/* only give out 32bit addresses */
 #define VKI_MAP_NORESERVE       0x4000  /* don't check for reservations */
+#define VKI_MAP_FIXED_NOREPLACE	0x100000 /* fail EEXIST if fixed map fails */
 
 //----------------------------------------------------------------------
 // From linux-2.6.9/include/asm-x86_64/fcntl.h
@@ -252,6 +251,7 @@ struct vki_sigcontext {
 #define VKI_O_TRUNC	  01000	/* not fcntl */
 #define VKI_O_APPEND	  02000
 #define VKI_O_NONBLOCK	  04000
+#define VKI_O_DIRECT     040000
 #define VKI_O_LARGEFILE	0100000
 
 #define VKI_AT_FDCWD            -100
@@ -298,6 +298,21 @@ struct vki_f_owner_ex {
 #define VKI_RLIMIT_STACK	3	/* max stack size */
 #define VKI_RLIMIT_CORE		4	/* max core file size */
 #define VKI_RLIMIT_NOFILE	7	/* max number of open files */
+
+//----------------------------------------------------------------------
+// From linux-5.0.0/arch/x86/include/uapi/asm/siginfo.h
+//----------------------------------------------------------------------
+
+/* We need that to ensure that sizeof(siginfo) == 128. */
+#ifdef __x86_64__
+# ifdef __ILP32__
+typedef long long __vki_kernel_si_clock_t __attribute__((aligned(4)));
+#  define __VKI_ARCH_SI_CLOCK_T             __vki_kernel_si_clock_t
+#  define __VKI_ARCH_SI_ATTRIBUTES          __attribute__((aligned(8)))
+# else
+#  define __VKI_ARCH_SI_PREAMBLE_SIZE (4 * sizeof(int))
+# endif
+#endif
 
 //----------------------------------------------------------------------
 // From linux-2.6.9/include/asm-x86_64/socket.h
@@ -361,7 +376,28 @@ struct vki_statfs {
 	__vki_kernel_fsid_t f_fsid;
 	long f_namelen;
 	long f_frsize;
-	long f_spare[5];
+        long f_flags;
+        long f_spare[4];
+};
+
+//----------------------------------------------------------------------
+// From bits/statfs.h
+//----------------------------------------------------------------------
+
+struct vki_statfs64
+{
+   long f_type;
+   long f_bsize;
+   unsigned long f_blocks;
+   unsigned long f_bfree;
+   unsigned long f_bavail;
+   unsigned long f_files;
+   unsigned long f_ffree;
+   __vki_kernel_fsid_t f_fsid;
+   long f_namelen;
+   long f_frsize;
+   long f_flags;
+   long f_spare[4];
 };
 
 //----------------------------------------------------------------------
@@ -559,16 +595,15 @@ struct vki_ucontext {
 #define VKI_ARCH_GET_GS 0x1004
 
 //----------------------------------------------------------------------
-// From linux-2.6.9/include/asm-x86_64/ldt.h
+// Originally from linux-2.6.9/include/asm-x86_64/ldt.h
 //----------------------------------------------------------------------
 
-// I think this LDT stuff will have to be reinstated for amd64, but I'm not
-// certain.  (Nb: The sys_arch_prctl seems to have replaced
-// [gs]et_thread_area syscalls.)
-//
 // Note that the type here is very slightly different to the
-// type for x86 (the final 'lm' field is added);  I'm not sure about the
-// significance of that... --njn
+// type for x86 (the final 'lm' field is added).
+/* The explanation is: the final bit is not present in 32 bit code running
+   on 64 bits kernel. The kernel has to assume this value is 0 whenever
+   user_desc arrives from a 32-bit program.
+   See /usr/include/asm/ldt.h. */
 
 /* [[Nb: This is the structure passed to the modify_ldt syscall.  Just so as
    to confuse and annoy everyone, this is _not_ the same as an
@@ -579,7 +614,7 @@ struct vki_ucontext {
    is rather for 32bit. */
 struct vki_user_desc {
 	unsigned int  entry_number;
-	unsigned long base_addr;
+	unsigned int  base_addr;
 	unsigned int  limit;
 	unsigned int  seg_32bit:1;
 	unsigned int  contents:2;
@@ -682,6 +717,11 @@ struct vki_shminfo64 {
 #define VKI_PTRACE_SETREGS            13
 #define VKI_PTRACE_GETFPREGS          14
 #define VKI_PTRACE_SETFPREGS          15
+
+// From /usr/include/asm/ptrace-abit.h
+/* only useful for access 32bit programs / kernels */
+#define VKI_PTRACE_GET_THREAD_AREA    25
+#define VKI_PTRACE_SET_THREAD_AREA    26
 
 //----------------------------------------------------------------------
 // From linux-2.6.8.1/include/asm-generic/errno.h

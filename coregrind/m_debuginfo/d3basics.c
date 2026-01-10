@@ -13,7 +13,7 @@
 
    This program is free software; you can redistribute it and/or
    modify it under the terms of the GNU General Public License as
-   published by the Free Software Foundation; either version 2 of the
+   published by the Free Software Foundation; either version 3 of the
    License, or (at your option) any later version.
 
    This program is distributed in the hope that it will be useful, but
@@ -22,9 +22,7 @@
    General Public License for more details.
 
    You should have received a copy of the GNU General Public License
-   along with this program; if not, write to the Free Software
-   Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
-   02111-1307, USA.
+   along with this program; if not, see <http://www.gnu.org/licenses/>.
 
    The GNU General Public License is contained in the file COPYING.
 
@@ -130,6 +128,16 @@ const HChar* ML_(pp_DW_TAG) ( DW_TAG tag )
       case DW_TAG_type_unit:          return "DW_TAG_type_unit";
       case DW_TAG_rvalue_reference_type: return "DW_TAG_rvalue_reference_type";
       case DW_TAG_template_alias:     return "DW_TAG_template_alias";
+      /* DWARF 5.  */
+      case DW_TAG_coarray_type:       return "DW_TAG_coarray_type";
+      case DW_TAG_generic_subrange:   return "DW_TAG_generic_subrange";
+      case DW_TAG_dynamic_type:       return "DW_TAG_dynamic_type";
+      case DW_TAG_atomic_type:        return "DW_TAG_atomic_type";
+      case DW_TAG_call_site:          return "DW_TAG_call_site";
+      case DW_TAG_call_site_parameter:
+         return "DW_TAG_call_site_parameter";
+      case DW_TAG_skeleton_unit:      return "DW_TAG_skeleton_unit";
+      case DW_TAG_immutable_type:     return "DW_TAG_immutable_type";
       /* SGI/MIPS Extensions.  */
       case DW_TAG_MIPS_loop:          return "DW_TAG_MIPS_loop";
       /* HP extensions.  See:
@@ -142,6 +150,16 @@ const HChar* ML_(pp_DW_TAG) ( DW_TAG tag )
       case DW_TAG_class_template:     return "DW_TAG_class_template";
       case DW_TAG_GNU_BINCL:          return "DW_TAG_GNU_BINCL";
       case DW_TAG_GNU_EINCL:          return "DW_TAG_GNU_EINCL";
+      case DW_TAG_GNU_template_template_param:
+         return "DW_TAG_GNU_template_template_param";
+      case DW_TAG_GNU_template_parameter_pack:
+         return"DW_TAG_GNU_template_parameter_pack";
+      case DW_TAG_GNU_formal_parameter_pack:
+         return "DW_TAG_GNU_formal_parameter_pack";
+      case DW_TAG_GNU_call_site:
+         return "DW_TAG_GNU_call_site";
+      case DW_TAG_GNU_call_site_parameter:
+         return "DW_TAG_GNU_call_site_parameter";
       /* Extensions for UPC.  See: http://upc.gwu.edu/~upc.  */
       case DW_TAG_upc_shared_type:    return "DW_TAG_upc_shared_type";
       case DW_TAG_upc_strict_type:    return "DW_TAG_upc_strict_type";
@@ -182,6 +200,27 @@ const HChar* ML_(pp_DW_FORM) ( DW_FORM form )
       case DW_FORM_exprloc:   return "DW_FORM_exprloc";
       case DW_FORM_flag_present:return "DW_FORM_flag_present";
       case DW_FORM_ref_sig8:  return "DW_FORM_ref_sig8";
+      case DW_FORM_strx:      return "DW_FORM_strx";
+      case DW_FORM_addrx:     return "DW_FORM_addrx";
+      case DW_FORM_ref_sup4:  return "DW_FORM_ref_sup4";
+      case DW_FORM_strp_sup:  return "DW_FORM_strp_sup";
+      case DW_FORM_data16:    return "DW_FORM_data16";
+      case DW_FORM_line_strp: return "DW_FORM_line_strp";
+      case DW_FORM_implicit_const:return "DW_FORM_implicit_const";
+      case DW_FORM_loclistx:  return "DW_FORM_loclistx";
+      case DW_FORM_rnglistx:  return "DW_FORM_rnglistx";
+      case DW_FORM_ref_sup8:  return "DW_FORM_ref_sup8";
+      case DW_FORM_strx1:     return "DW_FORM_strx1";
+      case DW_FORM_strx2:     return "DW_FORM_strx2";
+      case DW_FORM_strx3:     return "DW_FORM_strx3";
+      case DW_FORM_strx4:     return "DW_FORM_strx4";
+      case DW_FORM_addrx1:    return "DW_FORM_addrx1";
+      case DW_FORM_addrx2:    return "DW_FORM_addrx2";
+      case DW_FORM_addrx3:    return "DW_FORM_addrx3";
+      case DW_FORM_addrx4:    return "DW_FORM_addrx4";
+      /* GNU Debug Fission extensions.  */
+      case DW_FORM_GNU_addr_index:return "DW_FORM_GNU_addr_index";
+      case DW_FORM_GNU_str_index:return "DW_FORM_GNU_str_index";
       case DW_FORM_GNU_ref_alt:return "DW_FORM_GNU_ref_alt";
       case DW_FORM_GNU_strp_alt:return "DW_FORM_GNU_strp_alt";
    }
@@ -288,6 +327,36 @@ const HChar* ML_(pp_DW_AT) ( DW_AT attr )
       case DW_AT_const_expr: return "DW_AT_const_expr";
       case DW_AT_enum_class: return "DW_AT_enum_class";
       case DW_AT_linkage_name: return "DW_AT_linkage_name";
+      /* DWARF 5 values.  */
+      case DW_AT_string_length_bit_size: return "DW_AT_string_length_bit_size";
+      case DW_AT_string_length_byte_size: return "DW_AT_string_length_byte_size";
+      case DW_AT_rank: return "DW_AT_rank";
+      case DW_AT_str_offsets_base: return "DW_AT_str_offsets_base";
+      case DW_AT_addr_base: return "DW_AT_addr_base";
+      case DW_AT_rnglists_base: return "DW_AT_rnglists_base";
+      case DW_AT_dwo_name: return "DW_AT_dwo_name";
+      case DW_AT_reference: return "DW_AT_reference";
+      case DW_AT_rvalue_reference: return "DW_AT_rvalue_reference";
+      case DW_AT_macros: return "DW_AT_macros";
+      case DW_AT_call_all_calls: return "DW_AT_call_all_calls";
+      case DW_AT_call_all_source_calls: return "DW_AT_call_all_source_calls";
+      case DW_AT_call_all_tail_calls: return "DW_AT_call_all_tail_calls";
+      case DW_AT_call_return_pc: return "DW_AT_call_return_pc";
+      case DW_AT_call_value: return "DW_AT_call_value";
+      case DW_AT_call_origin: return "DW_AT_call_origin";
+      case DW_AT_call_parameter: return "DW_AT_call_parameter";
+      case DW_AT_call_pc: return "DW_AT_call_pc";
+      case DW_AT_call_tail_call: return "DW_AT_call_tail_call";
+      case DW_AT_call_target: return "DW_AT_call_target";
+      case DW_AT_call_target_clobbered: return "DW_AT_call_target_clobbered";
+      case DW_AT_call_data_location: return "DW_AT_call_data_location";
+      case DW_AT_call_data_value: return "DW_AT_call_data_value";
+      case DW_AT_noreturn: return "DW_AT_noreturn";
+      case DW_AT_alignment: return "DW_AT_alignment";
+      case DW_AT_export_symbols: return "DW_AT_export_symbols";
+      case DW_AT_deleted: return "DW_AT_deleted";
+      case DW_AT_defaulted: return "DW_AT_defaulted";
+      case DW_AT_loclists_base: return "DW_AT_loclists_base";
       /* SGI/MIPS extensions.  */
       /* case DW_AT_MIPS_fde: return "DW_AT_MIPS_fde"; */
       /* DW_AT_MIPS_fde == DW_AT_HP_unmodifiable */
@@ -324,8 +393,36 @@ const HChar* ML_(pp_DW_AT) ( DW_AT attr )
       case DW_AT_body_begin: return "DW_AT_body_begin";
       case DW_AT_body_end: return "DW_AT_body_end";
       case DW_AT_GNU_vector: return "DW_AT_GNU_vector";
+      case DW_AT_GNU_guarded_by: return "DW_AT_GNU_guarded_by";
+      case DW_AT_GNU_pt_guarded_by: return "DW_AT_GNU_pt_guarded_by";
+      case DW_AT_GNU_guarded: return "DW_AT_GNU_guarded";
+      case DW_AT_GNU_pt_guarded: return "DW_AT_GNU_pt_guarded";
+      case DW_AT_GNU_locks_excluded: return "DW_AT_GNU_locks_excluded";
+      case DW_AT_GNU_exclusive_locks_required: return "DW_AT_GNU_exclusive_locks_required";
+      case DW_AT_GNU_shared_locks_required: return "DW_AT_GNU_shared_locks_required";
+      case DW_AT_GNU_odr_signature: return "DW_AT_GNU_odr_signature";
+      case DW_AT_GNU_template_name: return "DW_AT_GNU_template_name";
+      case DW_AT_GNU_call_site_value: return "DW_AT_GNU_call_site_value";
+      case DW_AT_GNU_call_site_data_value: return "DW_AT_GNU_call_site_data_value";
+      case DW_AT_GNU_call_site_target: return "DW_AT_GNU_call_site_target";
+      case DW_AT_GNU_call_site_target_clobbered: return "DW_AT_GNU_call_site_target_clobbered";
+      case DW_AT_GNU_tail_call: return "DW_AT_GNU_tail_call";
       case DW_AT_GNU_all_tail_call_sites: return "DW_AT_GNU_all_tail_call_sites";
       case DW_AT_GNU_all_call_sites: return "DW_AT_GNU_all_call_sites";
+      case DW_AT_GNU_all_source_call_sites: return "DW_AT_GNU_all_source_call_sites";
+      case DW_AT_GNU_locviews: return "DW_AT_GNU_locviews";
+      case DW_AT_GNU_entry_view: return "DW_AT_GNU_entry_view";
+      case DW_AT_GNU_macros: return "DW_AT_GNU_macros";
+      case DW_AT_GNU_deleted: return "DW_AT_GNU_deleted";
+      case DW_AT_GNU_dwo_name: return "DW_AT_GNU_dwo_name";
+      case DW_AT_GNU_dwo_id: return "DW_AT_GNU_dwo_id";
+      case DW_AT_GNU_ranges_base: return "DW_AT_GNU_ranges_base";
+      case DW_AT_GNU_addr_base: return "DW_AT_GNU_addr_base";
+      case DW_AT_GNU_pubnames: return "DW_AT_GNU_pubnames";
+      case DW_AT_GNU_pubtypes: return "DW_AT_GNU_pubtypes";
+      case DW_AT_GNU_numerator: return "DW_AT_GNU_numerator";
+      case DW_AT_GNU_denominator: return "DW_AT_GNU_denominator";
+      case DW_AT_GNU_bias: return "DW_AT_GNU_bias";
       /* VMS extensions.  */
       case DW_AT_VMS_rtnbeg_pd_address: return "DW_AT_VMS_rtnbeg_pd_address";
       /* UPC extension.  */
@@ -338,6 +435,37 @@ const HChar* ML_(pp_DW_AT) ( DW_AT attr )
    return "DW_AT_???";
 }
 
+const HChar* ML_(pp_DW_LLE) ( DW_LLE entry )
+{
+   switch (entry) {
+      case DW_LLE_end_of_list: return "DW_LLE_end_of_list";
+      case DW_LLE_base_addressx: return "DW_LLE_base_addressx";
+      case DW_LLE_startx_endx: return "DW_LLE_startx_endx";
+      case DW_LLE_startx_length: return "DW_LLE_startx_length";
+      case DW_LLE_offset_pair: return "DW_LLE_offset_pair";
+      case DW_LLE_default_location: return "DW_LLE_default_location";
+      case DW_LLE_base_address: return "DW_LLE_base_address";
+      case DW_LLE_start_end: return "DW_LLE_start_end";
+      case DW_LLE_start_length: return "DW_LLE_start_length";
+      case DW_LLE_GNU_view_pair: return "DW_LLE_GNU_view_pair";
+   }
+   return "DW_LLE_???";
+}
+
+const HChar* ML_(pp_DW_RLE) ( DW_RLE entry )
+{
+   switch (entry) {
+      case DW_RLE_end_of_list: return "DW_RLE_end_of_list";
+      case DW_RLE_base_addressx: return "DW_RLE_base_addressx";
+      case DW_RLE_startx_endx: return "DW_RLE_startx_endx";
+      case DW_RLE_startx_length: return "DW_RLE_startx_length";
+      case DW_RLE_offset_pair: return "DW_RLE_offset_pair";
+      case DW_RLE_base_address: return "DW_RLE_base_address";
+      case DW_RLE_start_end: return "DW_RLE_start_end";
+      case DW_RLE_start_length: return "DW_RLE_start_length";
+   }
+   return "DW_RLE_???";
+}
 
 /* ------ To do with evaluation of Dwarf expressions ------ */
 
@@ -401,11 +529,11 @@ static Bool get_Dwarf_Reg( /*OUT*/Addr* a, Word regno, const RegSummary* regs )
 {
    vg_assert(regs);
 #  if defined(VGP_x86_linux) || defined(VGP_x86_darwin) \
-      || defined(VGP_x86_solaris) || defined(VGP_x86_dragonfly)
+      || defined(VGP_x86_solaris) || defined(VGP_x86_freebsd) || defined(VGP_x86_dragonfly)
    if (regno == 5/*EBP*/) { *a = regs->fp; return True; }
    if (regno == 4/*ESP*/) { *a = regs->sp; return True; }
 #  elif defined(VGP_amd64_linux) || defined(VGP_amd64_darwin) \
-        || defined(VGP_amd64_solaris) || defined(VGP_amd64_dragonfly)
+        || defined(VGP_amd64_solaris) || defined(VGP_amd64_freebsd)|| defined(VGP_amd64_dragonfly)
    if (regno == 6/*RBP*/) { *a = regs->fp; return True; }
    if (regno == 7/*RSP*/) { *a = regs->sp; return True; }
 #  elif defined(VGP_ppc32_linux)
@@ -418,14 +546,18 @@ static Bool get_Dwarf_Reg( /*OUT*/Addr* a, Word regno, const RegSummary* regs )
 #  elif defined(VGP_s390x_linux)
    if (regno == 15) { *a = regs->sp; return True; }
    if (regno == 11) { *a = regs->fp; return True; }
-#  elif defined(VGP_mips32_linux)
+#  elif defined(VGP_mips32_linux) || defined(VGP_nanomips_linux)
    if (regno == 29) { *a = regs->sp; return True; }
    if (regno == 30) { *a = regs->fp; return True; }
 #  elif defined(VGP_mips64_linux)
    if (regno == 29) { *a = regs->sp; return True; }
    if (regno == 30) { *a = regs->fp; return True; }
-#  elif defined(VGP_arm64_linux)
+#  elif defined(VGP_arm64_linux)  || defined(VGP_arm64_freebsd)
    if (regno == 31) { *a = regs->sp; return True; }
+   if (regno == 29) { *a = regs->fp; return True; }
+#  elif defined(VGP_riscv64_linux)
+   if (regno == 2) { *a = regs->sp; return True; }
+   if (regno == 8) { *a = regs->fp; return True; }
 #  else
 #    error "Unknown platform"
 #  endif
@@ -519,7 +651,6 @@ GXResult ML_(evaluate_Dwarf3_Expr) ( const UChar* expr, UWord exprszB,
 
    sp = -1;
    vg_assert(expr);
-   vg_assert(exprszB >= 0);
    limit = expr + exprszB;
 
    /* Deal with the case where the entire expression is a single
@@ -919,11 +1050,19 @@ GXResult ML_(evaluate_Dwarf3_Expr) ( const UChar* expr, UWord exprszB,
                FAIL("evaluate_Dwarf3_Expr: DW_OP_stack_value "
                     "does not terminate expression");
             break;
+	 case DW_OP_entry_value:
+	 case DW_OP_GNU_entry_value:
+            /* This provides a DWARF expression where any register op
+               needs tobe evaluated as if the value that register had
+               upon entering the function.  Which is non-trivial to
+               implement.  */
+            FAIL("evaluate_Dwarf3_Expr: Unhandled DW_OP entry_value");
+            return res;
          default:
             if (!VG_(clo_xml))
                VG_(message)(Vg_DebugMsg, 
                             "warning: evaluate_Dwarf3_Expr: unhandled "
-                            "DW_OP_ 0x%x\n", (Int)opcode); 
+                            "DW_OP_ 0x%x\n", (UInt)opcode);
             FAIL("evaluate_Dwarf3_Expr: unhandled DW_OP_");
             /*NOTREACHED*/
       }

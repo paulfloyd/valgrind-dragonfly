@@ -13,7 +13,7 @@
 
    This program is free software; you can redistribute it and/or
    modify it under the terms of the GNU General Public License as
-   published by the Free Software Foundation; either version 2 of the
+   published by the Free Software Foundation; either version 3 of the
    License, or (at your option) any later version.
 
    This program is distributed in the hope that it will be useful, but
@@ -22,9 +22,7 @@
    General Public License for more details.
 
    You should have received a copy of the GNU General Public License
-   along with this program; if not, write to the Free Software
-   Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
-   02111-1307, USA.
+   along with this program; if not, see <http://www.gnu.org/licenses/>.
 
    The GNU General Public License is contained in the file COPYING.
 */
@@ -44,7 +42,8 @@
 
 #if defined(VGP_ppc32_linux) || defined(VGP_ppc64be_linux) \
     || defined(VGP_ppc64le_linux) || defined(VGP_arm64_linux) \
-    || defined(VGP_mips32_linux)  || defined(VGP_mips64_linux)
+    || defined(VGP_mips32_linux)  || defined(VGP_mips64_linux) \
+    || defined(VGP_nanomips_linux)
 unsigned long VKI_PAGE_SHIFT = 12;
 unsigned long VKI_PAGE_SIZE  = 1UL << 12;
 #endif
@@ -77,7 +76,7 @@ void VG_(vki_do_initial_consistency_checks) ( void )
 
    /* --- Platform-specific checks on signal sets --- */
 
-#  if defined(VGO_linux) || defined(VGO_solaris) || defined(VGO_dragonfly)
+#  if defined(VGO_linux) || defined(VGO_solaris) || defined(VGO_freebsd) || defined(VGO_dragonfly)
    /* nothing to check */
 #  elif defined(VGP_x86_darwin) || defined(VGP_amd64_darwin)
    vg_assert(_VKI_NSIG == NSIG);
@@ -91,7 +90,7 @@ void VG_(vki_do_initial_consistency_checks) ( void )
 
    /* --- Platform-specific checks on sigactions --- */
 
-#  if defined(VGO_linux) || defined(VGO_dragonfly)
+#  if defined(VGO_linux) || defined(VGO_freebsd) || defined(VGO_dragonfly)
    /* the toK- and fromK- forms are identical */
    vg_assert( sizeof(vki_sigaction_toK_t) 
               == sizeof(vki_sigaction_fromK_t) );

@@ -13,7 +13,7 @@
 
    This program is free software; you can redistribute it and/or
    modify it under the terms of the GNU General Public License as
-   published by the Free Software Foundation; either version 2 of the
+   published by the Free Software Foundation; either version 3 of the
    License, or (at your option) any later version.
 
    This program is distributed in the hope that it will be useful, but
@@ -22,9 +22,7 @@
    General Public License for more details.
 
    You should have received a copy of the GNU General Public License
-   along with this program; if not, write to the Free Software
-   Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
-   02111-1307, USA.
+   along with this program; if not, see <http://www.gnu.org/licenses/>.
 
    The GNU General Public License is contained in the file COPYING.
 */
@@ -223,8 +221,12 @@ Bool VG_(finish_needs_init)(const HChar** failmsg)
 // These ones don't require any tool-supplied functions
 NEEDS(libc_freeres)
 NEEDS(cxx_freeres)
-NEEDS(core_errors)
 NEEDS(var_info)
+
+void VG_(needs_core_errors)( Bool need )
+{
+   VG_(needs).core_errors = need;
+}
 
 void VG_(needs_superblock_discards)(
    void (*discard)(Addr, VexGuestExtents)
@@ -338,12 +340,16 @@ void VG_(needs_info_location) (
 void VG_(needs_malloc_replacement)(
    void* (*malloc)               ( ThreadId, SizeT ),
    void* (*__builtin_new)        ( ThreadId, SizeT ),
+   void* (*__builtin_new_aligned)( ThreadId, SizeT, SizeT, SizeT ),
    void* (*__builtin_vec_new)    ( ThreadId, SizeT ),
-   void* (*memalign)             ( ThreadId, SizeT, SizeT ),
+   void* (*__builtin_vec_new_aligned)( ThreadId, SizeT, SizeT, SizeT ),
+   void* (*memalign)             ( ThreadId, SizeT, SizeT, SizeT ),
    void* (*calloc)               ( ThreadId, SizeT, SizeT ),
    void  (*free)                 ( ThreadId, void* ),
    void  (*__builtin_delete)     ( ThreadId, void* ),
+   void  (*__builtin_delete_aligned)     ( ThreadId, void*, SizeT ),
    void  (*__builtin_vec_delete) ( ThreadId, void* ),
+   void  (*__builtin_vec_delete_aligned) ( ThreadId, void*, SizeT ),
    void* (*realloc)              ( ThreadId, void*, SizeT ),
    SizeT (*malloc_usable_size)   ( ThreadId, void* ), 
    SizeT client_malloc_redzone_szB
@@ -352,12 +358,16 @@ void VG_(needs_malloc_replacement)(
    VG_(needs).malloc_replacement        = True;
    VG_(tdict).tool_malloc               = malloc;
    VG_(tdict).tool___builtin_new        = __builtin_new;
+   VG_(tdict).tool___builtin_new_aligned = __builtin_new_aligned;
    VG_(tdict).tool___builtin_vec_new    = __builtin_vec_new;
+   VG_(tdict).tool___builtin_vec_new_aligned = __builtin_vec_new_aligned;
    VG_(tdict).tool_memalign             = memalign;
    VG_(tdict).tool_calloc               = calloc;
    VG_(tdict).tool_free                 = free;
    VG_(tdict).tool___builtin_delete     = __builtin_delete;
+   VG_(tdict).tool___builtin_delete_aligned = __builtin_delete_aligned;
    VG_(tdict).tool___builtin_vec_delete = __builtin_vec_delete;
+   VG_(tdict).tool___builtin_vec_delete_aligned = __builtin_vec_delete_aligned;
    VG_(tdict).tool_realloc              = realloc;
    VG_(tdict).tool_malloc_usable_size   = malloc_usable_size;
    VG_(tdict).tool_client_redzone_szB   = client_malloc_redzone_szB;
@@ -439,6 +449,8 @@ DEF1(track_die_mem_stack_160,     Addr)
 DEF0(track_die_mem_stack,         Addr, SizeT)
 
 DEF0(track_ban_mem_stack,         Addr, SizeT)
+
+DEF0(track_register_stack,        Addr, Addr)
 
 DEF0(track_pre_mem_read,          CorePart, ThreadId, const HChar*, Addr, SizeT)
 DEF0(track_pre_mem_read_asciiz,   CorePart, ThreadId, const HChar*, Addr)

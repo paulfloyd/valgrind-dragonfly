@@ -22,6 +22,17 @@
 #define NNN 3456987
 
 #define IS_8_ALIGNED(_ptr)   (0 == (((unsigned long)(_ptr)) & 7))
+#define IS_16_ALIGNED(_ptr)  (0 == (((unsigned long)(_ptr)) & 15))
+
+// U128 from libvex_basictypes.h is a 4-x-UInt array, which is a bit
+// inconvenient, hence:
+typedef
+   struct {
+      // assuming little-endianness
+      unsigned long long int lo64;
+      unsigned long long int hi64;
+   }
+   MyU128;
 
 
 __attribute__((noinline)) void atomic_add_8bit ( char* p, int n ) 
@@ -146,7 +157,7 @@ __attribute__((noinline)) void atomic_add_8bit ( char* p, int n )
       : "+m" (*p), "+m" (dummy)
       : "d" (n)
       : "cc", "memory", "0", "1");
-#elif defined(VGA_mips32)
+#elif defined(VGA_mips32) || defined (VGA_nanomips)
    /* We rely on the fact that p is 4-aligned. Otherwise 'll' may throw an
       exception that can cause this function to fail. */
 #if defined (_MIPSEL)
@@ -234,6 +245,26 @@ __attribute__((noinline)) void atomic_add_8bit ( char* p, int n )
       );
    } while (block[2] != 1);
 #endif
+#elif defined(VGA_riscv64)
+   unsigned long long int block[3]
+      = { (unsigned long long int)p, (unsigned long long int)n,
+          0xFFFFFFFFFFFFFFFFULL};
+   do {
+      __asm__ __volatile__(
+         "mv     t0, %0"         "\n\t"
+         "ld     t1, (t0)"       "\n\t" // p
+         "ld     t2, 8(t0)"      "\n\t" // n
+         "lr.w   t3, (t1)"       "\n\t"
+         "slli   t3, t3, 56"     "\n\t" // sign-extend
+         "srai   t3, t3, 56"     "\n\t"
+         "add    t3, t3, t2"     "\n\t"
+         "sc.w   t4, t3, (t1)"   "\n\t"
+         "sd     t4, 16(t0)"     "\n\t"
+         : /*out*/
+         : /*in*/ "r"(&block[0])
+         : /*trash*/ "memory", "t0", "t1", "t2", "t3", "t4"
+      );
+   } while (block[2] != 0);
 #else
 # error "Unsupported arch"
 #endif
@@ -362,7 +393,7 @@ __attribute__((noinline)) void atomic_add_16bit ( short* p, int n )
       : "+m" (*p), "+m" (dummy)
       : "d" (n)
       : "cc", "memory", "0", "1");
-#elif defined(VGA_mips32)
+#elif defined(VGA_mips32) || defined (VGA_nanomips)
    /* We rely on the fact that p is 4-aligned. Otherwise 'll' may throw an
       exception that can cause this function to fail. */
 #if defined (_MIPSEL)
@@ -450,6 +481,26 @@ __attribute__((noinline)) void atomic_add_16bit ( short* p, int n )
       );
    } while (block[2] != 1);
 #endif
+#elif defined(VGA_riscv64)
+   unsigned long long int block[3]
+   = { (unsigned long long int)p, (unsigned long long int)n,
+       0xFFFFFFFFFFFFFFFFULL};
+   do {
+      __asm__ __volatile__(
+         "mv     t0, %0"         "\n\t"
+         "ld     t1, (t0)"       "\n\t" // p
+         "ld     t2, 8(t0)"      "\n\t" // n
+         "lr.w   t3, (t1)"       "\n\t"
+         "slli   t3, t3, 48"     "\n\t" // sign-extend
+         "srai   t3, t3, 48"     "\n\t"
+         "add    t3, t3, t2"     "\n\t"
+         "sc.w   t4, t3, (t1)"   "\n\t"
+         "sd     t4, 16(t0)"     "\n\t"
+         : /*out*/
+         : /*in*/ "r"(&block[0])
+         : /*trash*/ "memory", "t0", "t1", "t2", "t3", "t4"
+      );
+   } while (block[2] != 0);
 #else
 # error "Unsupported arch"
 #endif
@@ -571,7 +622,7 @@ __attribute__((noinline)) void atomic_add_32bit ( int* p, int n )
       : "+m" (*p)
       : "d" (n)
       : "cc", "memory", "0", "1");
-#elif defined(VGA_mips32)
+#elif defined(VGA_mips32) || defined (VGA_nanomips)
    unsigned int block[3]
       = { (unsigned int)p, (unsigned int)n, 0x0 };
    do {
@@ -605,6 +656,24 @@ __attribute__((noinline)) void atomic_add_32bit ( int* p, int n )
          : /*trash*/ "memory", "t0", "t1", "t2", "t3"
       );
    } while (block[2] != 1);
+#elif defined(VGA_riscv64)
+   unsigned long long int block[3]
+   = { (unsigned long long int)p, (unsigned long long int)n,
+       0xFFFFFFFFFFFFFFFFULL};
+   do {
+      __asm__ __volatile__(
+         "mv     t0, %0"         "\n\t"
+         "ld     t1, (t0)"       "\n\t" // p
+         "ld     t2, 8(t0)"      "\n\t" // n
+         "lr.w   t3, (t1)"       "\n\t"
+         "add    t3, t3, t2"     "\n\t"
+         "sc.w   t4, t3, (t1)"   "\n\t"
+         "sd     t4, 16(t0)"     "\n\t"
+         : /*out*/
+         : /*in*/ "r"(&block[0])
+         : /*trash*/ "memory", "t0", "t1", "t2", "t3", "t4"
+      );
+   } while (block[2] != 0);
 #else
 # error "Unsupported arch"
 #endif
@@ -612,7 +681,8 @@ __attribute__((noinline)) void atomic_add_32bit ( int* p, int n )
 
 __attribute__((noinline)) void atomic_add_64bit ( long long int* p, int n ) 
 {
-#if defined(VGA_x86) || defined(VGA_ppc32) || defined(VGA_mips32)
+#if defined(VGA_x86) || defined(VGA_ppc32) || defined(VGA_mips32) \
+ || defined (VGA_nanomips)
    /* do nothing; is not supported */
 #elif defined(VGA_amd64)
    // this is a bit subtle.  It relies on the fact that, on a 64-bit platform,
@@ -706,6 +776,58 @@ __attribute__((noinline)) void atomic_add_64bit ( long long int* p, int n )
          : /*trash*/ "memory", "t0", "t1", "t2", "t3"
       );
    } while (block[2] != 1);
+#elif defined(VGA_riscv64)
+   unsigned long long int block[3]
+   = { (unsigned long long int)p, (unsigned long long int)n,
+       0xFFFFFFFFFFFFFFFFULL};
+   do {
+      __asm__ __volatile__(
+         "mv     t0, %0"         "\n\t"
+         "ld     t1, (t0)"       "\n\t" // p
+         "ld     t2, 8(t0)"      "\n\t" // n
+         "lr.d   t3, (t1)"       "\n\t"
+         "add    t3, t3, t2"     "\n\t"
+         "sc.d   t4, t3, (t1)"   "\n\t"
+         "sd     t4, 16(t0)"     "\n\t"
+         : /*out*/
+         : /*in*/ "r"(&block[0])
+         : /*trash*/ "memory", "t0", "t1", "t2", "t3", "t4"
+      );
+   } while (block[2] != 0);
+#else
+# error "Unsupported arch"
+#endif
+}
+
+__attribute__((noinline)) void atomic_add_128bit ( MyU128* p,
+                                                   unsigned long long int n )
+{
+#if defined(VGA_x86) || defined(VGA_ppc32) || defined(VGA_mips32) \
+    || defined (VGA_nanomips) || defined(VGA_mips64) \
+    || defined(VGA_amd64) \
+    || defined(VGA_ppc64be) || defined(VGA_ppc64le) \
+    || defined(VGA_arm) \
+    || defined(VGA_s390x) || defined(VGA_riscv64)
+   /* do nothing; is not supported */
+#elif defined(VGA_arm64)
+   unsigned long long int block[3]
+      = { (unsigned long long int)p, (unsigned long long int)n,
+          0xFFFFFFFFFFFFFFFFULL};
+   do {
+      __asm__ __volatile__(
+         "mov   x5, %0"             "\n\t" // &block[0]
+         "ldr   x9, [x5, #0]"       "\n\t" // p
+         "ldr   x10, [x5, #8]"      "\n\t" // n
+         "ldxp  x7, x8, [x9]"       "\n\t"
+         "adds  x7, x7, x10"        "\n\t"
+         "adc   x8, x8, xzr"        "\n\t"
+         "stxp  w4, x7, x8, [x9]"   "\n\t"
+         "str   x4, [x5, #16]"      "\n\t"
+         : /*out*/
+         : /*in*/ "r"(&block[0])
+         : /*trash*/ "memory", "cc", "x5", "x7", "x8", "x9", "x10", "x4"
+      );
+   } while (block[2] != 0);
 #else
 # error "Unsupported arch"
 #endif
@@ -719,7 +841,11 @@ int main ( int argc, char** argv )
    short* p16;
    int*   p32;
    long long int* p64;
+   MyU128*  p128;
    pid_t  child, p2;
+
+   assert(sizeof(MyU128) == 16);
+   assert(sysconf(_SC_PAGESIZE) >= 4096);
 
    printf("parent, pre-fork\n");
 
@@ -735,11 +861,13 @@ int main ( int argc, char** argv )
    p16 = (short*)(page+256);
    p32 = (int*)(page+512);
    p64 = (long long int*)(page+768);
+   p128 = (MyU128*)(page+1024);
 
    assert( IS_8_ALIGNED(p8) );
    assert( IS_8_ALIGNED(p16) );
    assert( IS_8_ALIGNED(p32) );
    assert( IS_8_ALIGNED(p64) );
+   assert( IS_16_ALIGNED(p128) );
 
    memset(page, 0, 1024);
 
@@ -747,6 +875,7 @@ int main ( int argc, char** argv )
    *p16 = 0;
    *p32 = 0;
    *p64 = 0;
+   p128->lo64 = p128->hi64 = 0;
 
    child = fork();
    if (child == -1) {
@@ -762,6 +891,7 @@ int main ( int argc, char** argv )
          atomic_add_16bit(p16, 1);
          atomic_add_32bit(p32, 1);
          atomic_add_64bit(p64, 98765 ); /* ensure we hit the upper 32 bits */
+         atomic_add_128bit(p128, 0x1000000013374771ULL); // ditto re upper 64
       }
       return 1;
       /* NOTREACHED */
@@ -777,6 +907,7 @@ int main ( int argc, char** argv )
       atomic_add_16bit(p16, 1);
       atomic_add_32bit(p32, 1);
       atomic_add_64bit(p64, 98765 ); /* ensure we hit the upper 32 bits */
+      atomic_add_128bit(p128, 0x1000000013374771ULL); // ditto re upper 64
    }
 
    p2 = waitpid(child, &status, 0);
@@ -787,11 +918,17 @@ int main ( int argc, char** argv )
 
    printf("FINAL VALUES:  8 bit %d,  16 bit %d,  32 bit %d,  64 bit %lld\n",
           (int)(*(signed char*)p8), (int)(*p16), *p32, *p64 );
+   printf("               128 bit 0x%016llx:0x%016llx\n",
+          p128->hi64, p128->lo64);
 
    if (-74 == (int)(*(signed char*)p8) 
        && 32694 == (int)(*p16) 
        && 6913974 == *p32
-       && (0LL == *p64 || 682858642110LL == *p64)) {
+       && (0LL == *p64 || 682858642110LL == *p64)
+       && ((0 == p128->hi64 && 0 == p128->lo64)
+           || (0x00000000000697fb == p128->hi64
+               && 0x6007eb426316d956ULL == p128->lo64))
+      ) {
       printf("PASS\n");
    } else {
       printf("FAIL -- see source code for expected values\n");

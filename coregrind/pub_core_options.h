@@ -12,7 +12,7 @@
 
    This program is free software; you can redistribute it and/or
    modify it under the terms of the GNU General Public License as
-   published by the Free Software Foundation; either version 2 of the
+   published by the Free Software Foundation; either version 3 of the
    License, or (at your option) any later version.
 
    This program is distributed in the hope that it will be useful, but
@@ -21,9 +21,7 @@
    General Public License for more details.
 
    You should have received a copy of the GNU General Public License
-   along with this program; if not, write to the Free Software
-   Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
-   02111-1307, USA.
+   along with this program; if not, see <http://www.gnu.org/licenses/>.
 
    The GNU General Public License is contained in the file COPYING.
 */
@@ -54,8 +52,13 @@ extern Int   VG_(clo_error_exitcode);
 /* For tools that report errors, list detected errors and show suppression
    usage counts at exit. Default: No.
    Unless set explicitly by the user, the option is automatically
-   considered as set to yes for verbosity > 1. */
-extern Bool  VG_(clo_show_error_list);
+   considered as set to yes for verbosity > 1.
+   Note that in xml mode, errors are automatically printed as part of
+   the xml output. This option then only controls printing the used suppressions.
+   default: 0 (NO)
+            1 (yes)
+            2 (all meaning also print suppressed errors). */
+extern Int  VG_(clo_show_error_list);
 
 
 /* Markers used to mark the begin/end of an error, when errors are
@@ -81,10 +84,11 @@ extern Int VG_(clo_vgdb_poll);
 /* Specify when Valgrind gdbserver stops the execution and wait
    for a GDB to connect. */
 typedef
-   enum {                       // Stop :
-      VgdbStopAt_Startup,       // just before the client starts to execute.
-      VgdbStopAt_Exit,          // just before the client exits.
-      VgdbStopAt_ValgrindAbExit // on abnormal valgrind exit.
+   enum {                       // Stop just before ...
+      VgdbStopAt_Startup,       // ... the client starts to execute.
+      VgdbStopAt_Exit,          // ... the client exits with any exit code..
+      VgdbStopAt_Abexit,        // ... the client exits with a non 0 exit code.
+      VgdbStopAt_ValgrindAbExit // ... an abnormal valgrind exit.
    }
    VgdbStopAt;
 // Build mask to check or set VgdbStop_At a membership
@@ -127,6 +131,12 @@ extern const HChar* VG_(clo_trace_children_skip_by_arg);
    after fork() calls.  Although note they become un-silent again
    after the subsequent exec(). */
 extern Bool  VG_(clo_child_silent_after_fork);
+
+#if defined(VGO_linux)
+/* If True, valgrind will attempt to query debuginfod servers for
+   any missing debuginfo. */
+extern Bool VG_(clo_enable_debuginfod);
+#endif
 
 /* If the user specified --log-file=STR and/or --xml-file=STR, these
    hold STR before expansion. */
@@ -204,6 +214,8 @@ extern Bool  VG_(clo_trace_redir);
 /* Enable fair scheduling on multicore systems? default: NO */
 enum FairSchedType { disable_fair_sched, enable_fair_sched, try_fair_sched };
 extern enum FairSchedType VG_(clo_fair_sched);
+/* thread-scheduling timeslice. */
+extern Word   VG_(clo_scheduling_quantum);
 /* DEBUG: print thread scheduling events?  default: NO */
 extern Bool  VG_(clo_trace_sched);
 /* DEBUG: do heap profiling?  default: NO */
@@ -284,9 +296,6 @@ extern const HChar* VG_(clo_prefix_to_strip);
    the entire flag in quotes to stop shells messing up the * and ?
    wildcards. */
 extern XArray *VG_(clo_req_tsyms);
-
-/* Track open file descriptors? */
-extern Bool  VG_(clo_track_fds);
 
 /* Should we run __libc_freeres at exit?  Sometimes causes crashes.
    Default: YES.  Note this is subservient to VG_(needs).libc_freeres;
@@ -380,6 +389,9 @@ extern UInt VG_(clo_kernel_variant);
 /* Darwin-specific: automatically run /usr/bin/dsymutil to update
    .dSYM directories as necessary? */
 extern Bool VG_(clo_dsymutil);
+
+/* Outputs the list of dynamically changeable options. */
+extern void VG_(list_dynamic_options) (void);
 
 /* Should we trace into this child executable (across execve etc) ?
    This involves considering --trace-children=,

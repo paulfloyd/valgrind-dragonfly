@@ -13,7 +13,7 @@
 
    This program is free software; you can redistribute it and/or
    modify it under the terms of the GNU General Public License as
-   published by the Free Software Foundation; either version 2 of the
+   published by the Free Software Foundation; either version 3 of the
    License, or (at your option) any later version.
 
    This program is distributed in the hope that it will be useful, but
@@ -22,9 +22,7 @@
    General Public License for more details.
 
    You should have received a copy of the GNU General Public License
-   along with this program; if not, write to the Free Software
-   Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
-   02111-1307, USA.
+   along with this program; if not, see <http://www.gnu.org/licenses/>.
 
    The GNU General Public License is contained in the file COPYING.
 */
@@ -53,7 +51,7 @@
 #include "pub_core_syswrap.h"
 #include "pub_core_tooliface.h"       /* VG_TRACK */
 #include "pub_core_threadstate.h"     /* ThreadArchState */
-#include "priv_initimg_pathscan.h"
+#include "pub_core_pathscan.h"        /* find_executable */
 #include "pub_core_initimg.h"         /* self */
 
 
@@ -67,10 +65,9 @@ static void load_client(/*OUT*/ExeInfo *info,
 {
    const HChar *exe_name;
    Int ret;
-   SysRes res;
 
    vg_assert(VG_(args_the_exename));
-   exe_name = ML_(find_executable)(VG_(args_the_exename));
+   exe_name = VG_(find_executable)(VG_(args_the_exename));
 
    if (!exe_name) {
       VG_(printf)("valgrind: %s: command not found\n", VG_(args_the_exename));
@@ -97,12 +94,15 @@ static void load_client(/*OUT*/ExeInfo *info,
       /*NOTREACHED*/
    }
    VG_(strcpy)(out_exe_name, exe_name);
-
-   /* Get hold of a file descriptor which refers to the client executable.
-      This is needed for attaching to GDB. */
-   res = VG_(open)(exe_name, VKI_O_RDONLY, VKI_S_IRUSR);
-   if (!sr_isError(res))
-      VG_(cl_exec_fd) = sr_Res(res);
+   if (VG_(resolved_exename) == NULL) {
+      HChar interp_name[VKI_PATH_MAX];
+      if (VG_(try_get_interp)(exe_name, interp_name, VKI_PATH_MAX)) {
+         exe_name = interp_name;
+      }
+      HChar resolved_name[VKI_PATH_MAX];
+      VG_(realpath)(exe_name, resolved_name);
+      VG_(resolved_exename) = VG_(strdup)("initimg-solaris.lc.1", resolved_name);
+   }
 
    /* Set initial brk values. */
    if (info->ldsoexec) {
@@ -922,7 +922,7 @@ IIFinaliseImageInfo VG_(ii_create_image)(IICreateImageInfo iicii,
 
       szB = VG_PGROUNDUP(szB);
       VG_(debugLog)(1, "initimg",
-                       "Setup client stack: size will be %ld\n", szB);
+                       "Setup client stack: size will be %lu\n", szB);
 
       iifii.clstack_max_size = szB;
       iifii.initial_client_SP = setup_client_stack(init_sp, env, &info,

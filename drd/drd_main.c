@@ -1,11 +1,11 @@
 /*
   This file is part of drd, a thread error detector.
 
-  Copyright (C) 2006-2017 Bart Van Assche <bvanassche@acm.org>.
+  Copyright (C) 2006-2020 Bart Van Assche <bvanassche@acm.org>.
 
   This program is free software; you can redistribute it and/or
   modify it under the terms of the GNU General Public License as
-  published by the Free Software Foundation; either version 2 of the
+  published by the Free Software Foundation; either version 3 of the
   License, or (at your option) any later version.
 
   This program is distributed in the hope that it will be useful, but
@@ -14,9 +14,7 @@
   General Public License for more details.
 
   You should have received a copy of the GNU General Public License
-  along with this program; if not, write to the Free Software
-  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
-  02111-1307, USA.
+  along with this program; if not, see <http://www.gnu.org/licenses/>.
 
   The GNU General Public License is contained in the file COPYING.
 */
@@ -67,60 +65,95 @@ static Bool trace_sectsuppr;
  */
 static Bool DRD_(process_cmd_line_option)(const HChar* arg)
 {
-   int check_stack_accesses   = -1;
+   Bool check_stack_accesses   = False;
    int join_list_vol          = -1;
    int exclusive_threshold_ms = -1;
-   int first_race_only        = -1;
-   int report_signal_unlocked = -1;
-   int segment_merging        = -1;
+   Bool first_race_only        = False;
+   Bool report_signal_unlocked = False;
+   Bool segment_merging        = False;
    int segment_merge_interval = -1;
    int shared_threshold_ms    = -1;
-   int show_confl_seg         = -1;
-   int trace_barrier          = -1;
-   int trace_clientobj        = -1;
-   int trace_cond             = -1;
-   int trace_csw              = -1;
-   int trace_fork_join        = -1;
-   int trace_hb               = -1;
-   int trace_conflict_set     = -1;
-   int trace_conflict_set_bm  = -1;
-   int trace_mutex            = -1;
-   int trace_rwlock           = -1;
-   int trace_segment          = -1;
-   int trace_semaphore        = -1;
-   int trace_suppression      = -1;
+   Bool show_confl_seg         = False;
+   Bool trace_barrier          = False;
+   Bool trace_clientobj        = False;
+   Bool trace_cond             = False;
+   Bool trace_csw              = False;
+   Bool trace_fork_join        = False;
+   Bool trace_hb               = False;
+   Bool trace_conflict_set     = False;
+   Bool trace_conflict_set_bm  = False;
+   Bool trace_mutex            = False;
+   Bool trace_rwlock           = False;
+   Bool trace_segment          = False;
+   Bool trace_semaphore        = False;
+   Bool trace_suppression      = False;
    const HChar* trace_address = 0;
    const HChar* ptrace_address= 0;
 
-   if      VG_BOOL_CLO(arg, "--check-stack-var",     check_stack_accesses) {}
+   if      VG_BOOL_CLO(arg, "--check-stack-var",     check_stack_accesses) {
+      DRD_(set_check_stack_accesses)(check_stack_accesses);
+   }
    else if VG_INT_CLO (arg, "--join-list-vol",       join_list_vol) {}
    else if VG_BOOL_CLO(arg, "--drd-stats",           s_print_stats) {}
-   else if VG_BOOL_CLO(arg, "--first-race-only",     first_race_only) {}
+   else if VG_BOOL_CLO(arg, "--first-race-only",     first_race_only) {
+      DRD_(set_first_race_only)(first_race_only);
+   }
    else if VG_BOOL_CLO(arg, "--free-is-write",       DRD_(g_free_is_write)) {}
-   else if VG_BOOL_CLO(arg,"--report-signal-unlocked",report_signal_unlocked)
-   {}
-   else if VG_BOOL_CLO(arg, "--segment-merging",     segment_merging) {}
+   else if VG_BOOL_CLO(arg,"--report-signal-unlocked",report_signal_unlocked) {
+      DRD_(cond_set_report_signal_unlocked)(report_signal_unlocked);
+   }
+   else if VG_BOOL_CLO(arg, "--segment-merging",     segment_merging) {
+      DRD_(thread_set_segment_merging)(segment_merging);
+   }
    else if VG_INT_CLO (arg, "--segment-merging-interval", segment_merge_interval)
    {}
-   else if VG_BOOL_CLO(arg, "--show-confl-seg",      show_confl_seg) {}
+   else if VG_BOOL_CLO(arg, "--show-confl-seg",      show_confl_seg) {
+      DRD_(set_show_conflicting_segments)(show_confl_seg);
+   }
    else if VG_BOOL_CLO(arg, "--show-stack-usage",    s_show_stack_usage) {}
    else if VG_BOOL_CLO(arg, "--ignore-thread-creation",
    DRD_(ignore_thread_creation)) {}
    else if VG_BOOL_CLO(arg, "--trace-alloc",         s_trace_alloc) {}
-   else if VG_BOOL_CLO(arg, "--trace-barrier",       trace_barrier) {}
-   else if VG_BOOL_CLO(arg, "--trace-clientobj",     trace_clientobj) {}
-   else if VG_BOOL_CLO(arg, "--trace-cond",          trace_cond) {}
-   else if VG_BOOL_CLO(arg, "--trace-conflict-set",  trace_conflict_set) {}
-   else if VG_BOOL_CLO(arg, "--trace-conflict-set-bm", trace_conflict_set_bm){}
-   else if VG_BOOL_CLO(arg, "--trace-csw",           trace_csw) {}
-   else if VG_BOOL_CLO(arg, "--trace-fork-join",     trace_fork_join) {}
-   else if VG_BOOL_CLO(arg, "--trace-hb",            trace_hb) {}
-   else if VG_BOOL_CLO(arg, "--trace-mutex",         trace_mutex) {}
-   else if VG_BOOL_CLO(arg, "--trace-rwlock",        trace_rwlock) {}
+   else if VG_BOOL_CLO(arg, "--trace-barrier",       trace_barrier) {
+      DRD_(barrier_set_trace)(trace_barrier);
+   }
+   else if VG_BOOL_CLO(arg, "--trace-clientobj",     trace_clientobj) {
+      DRD_(clientobj_set_trace)(trace_clientobj);
+   }
+   else if VG_BOOL_CLO(arg, "--trace-cond",          trace_cond) {
+      DRD_(cond_set_trace)(trace_cond);
+   }
+   else if VG_BOOL_CLO(arg, "--trace-conflict-set",  trace_conflict_set) {
+      DRD_(thread_trace_conflict_set)(trace_conflict_set);
+   }
+   else if VG_BOOL_CLO(arg, "--trace-conflict-set-bm", trace_conflict_set_bm){
+      DRD_(thread_trace_conflict_set_bm)(trace_conflict_set_bm);
+   }
+   else if VG_BOOL_CLO(arg, "--trace-csw",           trace_csw) {
+      DRD_(thread_trace_context_switches)(trace_csw);
+   }
+   else if VG_BOOL_CLO(arg, "--trace-fork-join",     trace_fork_join) {
+      DRD_(thread_set_trace_fork_join)(trace_fork_join);
+   }
+   else if VG_BOOL_CLO(arg, "--trace-hb",            trace_hb) {
+      DRD_(hb_set_trace)(trace_hb);
+   }
+   else if VG_BOOL_CLO(arg, "--trace-mutex",         trace_mutex) {
+      DRD_(mutex_set_trace)(trace_mutex);
+   }
+   else if VG_BOOL_CLO(arg, "--trace-rwlock",        trace_rwlock) {
+      DRD_(rwlock_set_trace)(trace_rwlock);
+   }
    else if VG_BOOL_CLO(arg, "--trace-sectsuppr",     trace_sectsuppr) {}
-   else if VG_BOOL_CLO(arg, "--trace-segment",       trace_segment) {}
-   else if VG_BOOL_CLO(arg, "--trace-semaphore",     trace_semaphore) {}
-   else if VG_BOOL_CLO(arg, "--trace-suppr",         trace_suppression) {}
+   else if VG_BOOL_CLO(arg, "--trace-segment",       trace_segment) {
+      DRD_(sg_set_trace)(trace_segment);
+   }
+   else if VG_BOOL_CLO(arg, "--trace-semaphore",     trace_semaphore) {
+      DRD_(semaphore_set_trace)(trace_semaphore);
+   }
+   else if VG_BOOL_CLO(arg, "--trace-suppr",         trace_suppression) {
+      DRD_(suppression_set_trace)(trace_suppression);
+   }
    else if VG_BOOL_CLO(arg, "--var-info",            s_var_info) {}
    else if VG_BOOL_CLO(arg, "--verify-conflict-set", DRD_(verify_conflict_set))
    {}
@@ -131,33 +164,19 @@ static Bool DRD_(process_cmd_line_option)(const HChar* arg)
    else
       return VG_(replacement_malloc_process_cmd_line_option)(arg);
 
-   if (check_stack_accesses != -1)
-      DRD_(set_check_stack_accesses)(check_stack_accesses);
    if (exclusive_threshold_ms != -1)
    {
       DRD_(mutex_set_lock_threshold)(exclusive_threshold_ms);
       DRD_(rwlock_set_exclusive_threshold)(exclusive_threshold_ms);
    }
-   if (first_race_only != -1)
-   {
-      DRD_(set_first_race_only)(first_race_only);
-   }
    if (join_list_vol != -1)
       DRD_(thread_set_join_list_vol)(join_list_vol);
-   if (report_signal_unlocked != -1)
-   {
-      DRD_(cond_set_report_signal_unlocked)(report_signal_unlocked);
-   }
    if (shared_threshold_ms != -1)
    {
       DRD_(rwlock_set_shared_threshold)(shared_threshold_ms);
    }
-   if (segment_merging != -1)
-      DRD_(thread_set_segment_merging)(segment_merging);
    if (segment_merge_interval != -1)
       DRD_(thread_set_segment_merge_interval)(segment_merge_interval);
-   if (show_confl_seg != -1)
-      DRD_(set_show_conflicting_segments)(show_confl_seg);
    if (trace_address) {
       const Addr addr = VG_(strtoll16)(trace_address, 0);
       DRD_(start_tracing_address_range)(addr, addr + 1, False);
@@ -171,32 +190,6 @@ static Bool DRD_(process_cmd_line_option)(const HChar* arg)
       length = plus ? VG_(strtoll16)(plus + 1, 0) : 1;
       DRD_(start_tracing_address_range)(addr, addr + length, True);
    }
-   if (trace_barrier != -1)
-      DRD_(barrier_set_trace)(trace_barrier);
-   if (trace_clientobj != -1)
-      DRD_(clientobj_set_trace)(trace_clientobj);
-   if (trace_cond != -1)
-      DRD_(cond_set_trace)(trace_cond);
-   if (trace_csw != -1)
-      DRD_(thread_trace_context_switches)(trace_csw);
-   if (trace_fork_join != -1)
-      DRD_(thread_set_trace_fork_join)(trace_fork_join);
-   if (trace_hb != -1)
-      DRD_(hb_set_trace)(trace_hb);
-   if (trace_conflict_set != -1)
-      DRD_(thread_trace_conflict_set)(trace_conflict_set);
-   if (trace_conflict_set_bm != -1)
-      DRD_(thread_trace_conflict_set_bm)(trace_conflict_set_bm);
-   if (trace_mutex != -1)
-      DRD_(mutex_set_trace)(trace_mutex);
-   if (trace_rwlock != -1)
-      DRD_(rwlock_set_trace)(trace_rwlock);
-   if (trace_segment != -1)
-      DRD_(sg_set_trace)(trace_segment);
-   if (trace_semaphore != -1)
-      DRD_(semaphore_set_trace)(trace_semaphore);
-   if (trace_suppression != -1)
-      DRD_(suppression_set_trace)(trace_suppression);
 
    return True;
 }
@@ -631,6 +624,13 @@ static void drd_stop_using_mem_stack_signal(Addr a, SizeT len)
                       True);
 }
 
+static void drd_register_stack(Addr start, Addr end)
+{
+   DrdThreadId drd_tid = DRD_(thread_get_running_tid)();
+
+   DRD_(thread_register_stack)(drd_tid, start, end);
+}
+
 static
 void drd_pre_thread_create(const ThreadId creator, const ThreadId created)
 {
@@ -705,12 +705,11 @@ static void drd_thread_finished(ThreadId vg_tid)
          = (DRD_(thread_get_stack_max)(drd_tid)
             - DRD_(thread_get_stack_min_min)(drd_tid));
       VG_(message)(Vg_UserMsg,
-                   "thread %u%s finished and used %lu bytes out of %lu"
-                   " on its stack. Margin: %lu bytes.\n",
+                   "thread %u%s finished and used %lu bytes out of %lu on its stack. Margin: %ld bytes.\n",
                    drd_tid,
                    DRD_(thread_get_joinable)(drd_tid)
                    ? "" : " (which is a detached thread)",
-                   used_stack, stack_size, stack_size - used_stack);
+                   used_stack, stack_size, (long)(stack_size - used_stack));
 
    }
    drd_stop_using_mem(DRD_(thread_get_stack_min)(drd_tid),
@@ -740,7 +739,7 @@ void drd__atfork_child(ThreadId tid)
 
 static void DRD_(post_clo_init)(void)
 {
-#if defined(VGO_linux) || defined(VGO_darwin) || defined(VGO_solaris) || defined(VGO_dragonfly)
+#if defined(VGO_linux) || defined(VGO_darwin) || defined(VGO_solaris) || defined(VGO_freebsd) || defined(VGO_dragonfly)
    /* fine */
 #else
    VG_(printf)("\nWARNING: DRD has not yet been tested on this operating system.\n\n");
@@ -825,8 +824,8 @@ void drd_pre_clo_init(void)
    VG_(details_name)            ("drd");
    VG_(details_version)         (NULL);
    VG_(details_description)     ("a thread error detector");
-   VG_(details_copyright_author)("Copyright (C) 2006-2017, and GNU GPL'd,"
-                                 " by Bart Van Assche.");
+   VG_(details_copyright_author)("Copyright (C) 2006-2024, and GNU GPL'd,"
+                                 " by Bart Van Assche et al.");
    VG_(details_bug_reports_to)  (VG_BUGS_TO);
 
    VG_(basic_tool_funcs)        (DRD_(post_clo_init),
@@ -855,6 +854,7 @@ void drd_pre_clo_init(void)
    VG_(track_die_mem_munmap)       (drd_stop_using_nonstack_mem);
    VG_(track_die_mem_stack)        (drd_stop_using_mem_stack);
    VG_(track_die_mem_stack_signal) (drd_stop_using_mem_stack_signal);
+   VG_(track_register_stack)       (drd_register_stack);
    VG_(track_pre_deliver_signal)   (drd_pre_deliver_signal);
    VG_(track_post_deliver_signal)  (drd_post_deliver_signal);
    VG_(track_start_client_code)    (drd_start_client_code);

@@ -34,6 +34,7 @@ PRIV_HEADERS = 	priv/host_x86_defs.h			\
 		priv/guest_arm_defs.h			\
 		priv/guest_ppc_defs.h			\
 		priv/guest_mips_defs.h			\
+		priv/mips_defs.h			\
 		priv/s390_disasm.h		        \
 		priv/s390_defs.h		        \
 		priv/ir_match.h			        \
@@ -67,6 +68,7 @@ LIB_OBJS = 	priv/ir_defs.o                          \
 		priv/host_generic_simd128.o	        \
 		priv/host_generic_simd256.o	        \
 		priv/host_generic_reg_alloc2.o		\
+		priv/host_generic_reg_alloc3.o		\
 		priv/guest_generic_x87.o	        \
 		priv/guest_generic_bb_to_IR.o		\
 		priv/guest_x86_helpers.o		\
@@ -82,6 +84,7 @@ LIB_OBJS = 	priv/ir_defs.o                          \
 		priv/guest_arm64_toIR.o			\
 		priv/guest_ppc_toIR.o                   \
 		priv/guest_s390_toIR.o			\
+		priv/guest_mipsdsp_toIR.o		\
 		priv/guest_mips_toIR.o
 
 PUB_INCLUDES = -Ipub
@@ -345,6 +348,10 @@ priv/host_generic_reg_alloc2.o: $(ALL_HEADERS) priv/host_generic_reg_alloc2.c
 	$(CC) $(CCFLAGS) $(ALL_INCLUDES) -o priv/host_generic_reg_alloc2.o \
 					 -c priv/host_generic_reg_alloc2.c
 
+priv/host_generic_reg_alloc3.o: $(ALL_HEADERS) priv/host_generic_reg_alloc3.c
+	$(CC) $(CCFLAGS) $(ALL_INCLUDES) -o priv/host_generic_reg_alloc3.o \
+					 -c priv/host_generic_reg_alloc3.c
+
 priv/guest_x86_toIR.o: $(ALL_HEADERS) priv/guest_x86_toIR.c
 	$(CC) $(CCFLAGS) $(ALL_INCLUDES) -o priv/guest_x86_toIR.o \
 					 -c priv/guest_x86_toIR.c
@@ -408,6 +415,10 @@ priv/s390_disasm.o: $(ALL_HEADERS) priv/s390_disasm.c
 priv/guest_mips_helpers.o: $(ALL_HEADERS) priv/guest_mips_helpers.c
 	$(CC) $(CCFLAGS) $(ALL_INCLUDES) -o priv/guest_mips_helpers.o \
 					 -c priv/guest_mips_helpers.c
+
+priv/guest_mipsdsp_toIR.o: $(ALL_HEADERS) priv/guest_mipsdsp_toIR.c
+	$(CC) $(CCFLAGS) $(ALL_INCLUDES) -o priv/guest_mipsdsp_toIR.o \
+					 -c priv/guest_mipsdsp_toIR.c
 
 priv/guest_mips_toIR.o: $(ALL_HEADERS) priv/guest_mips_toIR.c
 	$(CC) $(CCFLAGS) $(ALL_INCLUDES) -o priv/guest_mips_toIR.o \

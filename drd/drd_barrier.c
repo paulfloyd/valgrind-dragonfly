@@ -1,11 +1,11 @@
 /*
   This file is part of drd, a thread error detector.
 
-  Copyright (C) 2006-2017 Bart Van Assche <bvanassche@acm.org>.
+  Copyright (C) 2006-2020 Bart Van Assche <bvanassche@acm.org>.
 
   This program is free software; you can redistribute it and/or
   modify it under the terms of the GNU General Public License as
-  published by the Free Software Foundation; either version 2 of the
+  published by the Free Software Foundation; either version 3 of the
   License, or (at your option) any later version.
 
   This program is distributed in the hope that it will be useful, but
@@ -14,9 +14,7 @@
   General Public License for more details.
 
   You should have received a copy of the GNU General Public License
-  along with this program; if not, write to the Free Software
-  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
-  02111-1307, USA.
+  along with this program; if not, see <http://www.gnu.org/licenses/>.
 
   The GNU General Public License is contained in the file COPYING.
 */
@@ -433,25 +431,6 @@ void DRD_(barrier_post_wait)(const DrdThreadId tid, const Addr barrier,
 
    oset = p->oset[p->post_iteration & 1];
    q = VG_(OSetGen_Lookup)(oset, &word_tid);
-   if (p->pre_iteration - p->post_iteration > 1) {
-      BarrierErrInfo bei = { DRD_(thread_get_running_tid)(), p->a1, 0, 0 };
-      VG_(maybe_record_error)(VG_(get_running_tid)(),
-                              BarrierErr,
-                              VG_(get_IP)(VG_(get_running_tid)()),
-                              "Number of concurrent pthread_barrier_wait()"
-                              " calls exceeds the barrier count",
-                              &bei);
-   } else if (q == NULL) {
-      BarrierErrInfo bei = { DRD_(thread_get_running_tid)(), p->a1, 0, 0 };
-      VG_(maybe_record_error)(VG_(get_running_tid)(),
-                              BarrierErr,
-                              VG_(get_IP)(VG_(get_running_tid)()),
-                              "Error in barrier implementation"
-                              " -- barrier_wait() started before"
-                              " barrier_destroy() and finished after"
-                              " barrier_destroy()",
-                              &bei);
-   }
    if (q == NULL) {
       q = VG_(OSetGen_AllocNode)(oset, sizeof(*q));
       DRD_(barrier_thread_initialize)(q, tid);

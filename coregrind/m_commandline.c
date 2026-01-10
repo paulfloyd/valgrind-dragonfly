@@ -12,7 +12,7 @@
 
    This program is free software; you can redistribute it and/or
    modify it under the terms of the GNU General Public License as
-   published by the Free Software Foundation; either version 2 of the
+   published by the Free Software Foundation; either version 3 of the
    License, or (at your option) any later version.
 
    This program is distributed in the hope that it will be useful, but
@@ -21,9 +21,7 @@
    General Public License for more details.
 
    You should have received a copy of the GNU General Public License
-   along with this program; if not, write to the Free Software
-   Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
-   02111-1307, USA.
+   along with this program; if not, see <http://www.gnu.org/licenses/>.
 
    The GNU General Public License is contained in the file COPYING.
 */
@@ -68,7 +66,7 @@ static HChar* read_dot_valgrindrc ( const HChar* dir )
    if ( !sr_isError(fd) ) {
       Int res = VG_(fstat)( sr_Res(fd), &stat_buf );
       /* Ignore if not owned by the current user, or is not a regular file,
-         or is world writeable (CVE-2008-4865). */
+         or is world writable (CVE-2008-4865). */
       if (res == 0
           && stat_buf.uid == VG_(geteuid)()
           && VKI_S_ISREG(stat_buf.mode)
@@ -100,14 +98,27 @@ static void add_args_from_string ( HChar* s )
 {
    HChar* tmp;
    HChar* cp = s;
+   int quoted = '\0';
    vg_assert(cp);
    while (True) {
+      HChar* out;
       // We have alternating sequences: blanks, non-blanks, blanks...
       // copy the non-blanks sequences, and add terminating '\0'
+      // deal with " or '-quoted strings properly.
       while (VG_(isspace)(*cp)) cp++;
       if (*cp == 0) break;
-      tmp = cp;
-      while ( !VG_(isspace)(*cp) && *cp != 0 ) cp++;
+      tmp = out = cp;
+      while ( (quoted || !VG_(isspace)(*cp)) && *cp) {
+          if (*cp == quoted) {
+              quoted = '\0';
+          } else if (*cp == '\'' || *cp == '"') {
+              quoted = *cp;
+          } else {
+              *out++ = *cp;
+          }
+          cp++;
+      }
+      if (out < cp) *out++ = '\0';
       if ( *cp != 0 ) *cp++ = '\0';       // terminate if not the last
       add_string( VG_(args_for_valgrind), tmp );
    }
@@ -190,6 +201,10 @@ void VG_(split_up_argv)( Int argc, HChar** argv )
       }
       if (0 == VG_(strcmp)(argv[i], "--command-line-only=yes"))
          augment = False;
+      /* mainly to allow overriding the regtest default */
+      if (0 == VG_(strcmp)(argv[i], "--command-line-only=no")) {
+         augment = True;
+      }
       if (argv[i][0] != '-')
 	break;
       add_string( tmp_xarray, argv[i] );
@@ -198,7 +213,7 @@ void VG_(split_up_argv)( Int argc, HChar** argv )
    /* Should now be looking at the exe name. */
    if (i < argc) {
       vg_assert(argv[i]);
-      VG_(args_the_exename) = argv[i];
+      VG_(args_the_exename) = VG_(strdup)("commandline.sua.4", argv[i]);
       i++;
    }
 

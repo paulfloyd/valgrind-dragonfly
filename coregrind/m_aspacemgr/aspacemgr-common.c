@@ -14,7 +14,7 @@
 
    This program is free software; you can redistribute it and/or
    modify it under the terms of the GNU General Public License as
-   published by the Free Software Foundation; either version 2 of the
+   published by the Free Software Foundation; either version 3 of the
    License, or (at your option) any later version.
 
    This program is distributed in the hope that it will be useful, but
@@ -23,9 +23,7 @@
    General Public License for more details.
 
    You should have received a copy of the GNU General Public License
-   along with this program; if not, write to the Free Software
-   Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
-   02111-1307, USA.
+   along with this program; if not, see <http://www.gnu.org/licenses/>.
 
    The GNU General Public License is contained in the file COPYING.
 */
@@ -37,6 +35,7 @@
    ************************************************************* */
 
 #include "priv_aspacemgr.h"
+#include "pub_core_libcassert.h"
 #include "config.h"
 
 
@@ -150,7 +149,7 @@ SysRes VG_(am_do_mmap_NO_NOTIFY)( Addr start, SizeT length, UInt prot,
    res = VG_(do_syscall6)(__NR3264_mmap, (UWord)start, length, 
                          prot, flags, fd, offset);
 #  elif defined(VGP_x86_linux) || defined(VGP_ppc32_linux) \
-        || defined(VGP_arm_linux)
+        || defined(VGP_arm_linux) || defined(VGP_nanomips_linux)
    /* mmap2 uses 4096 chunks even if actual page size is bigger. */
    aspacem_assert((offset % 4096) == 0);
    res = VG_(do_syscall6)(__NR_mmap2, (UWord)start, length,
@@ -158,7 +157,8 @@ SysRes VG_(am_do_mmap_NO_NOTIFY)( Addr start, SizeT length, UInt prot,
 #  elif defined(VGP_amd64_linux) \
         || defined(VGP_ppc64be_linux)  || defined(VGP_ppc64le_linux) \
         || defined(VGP_s390x_linux) || defined(VGP_mips32_linux) \
-        || defined(VGP_mips64_linux) || defined(VGP_arm64_linux)
+        || defined(VGP_mips64_linux) || defined(VGP_arm64_linux) \
+        || defined(VGP_riscv64_linux)
    res = VG_(do_syscall6)(__NR_mmap, (UWord)start, length, 
                          prot, flags, fd, offset);
 #  elif defined(VGP_x86_darwin)
@@ -173,13 +173,13 @@ SysRes VG_(am_do_mmap_NO_NOTIFY)( Addr start, SizeT length, UInt prot,
    }
    res = VG_(do_syscall6)(__NR_mmap, (UWord)start, length,
                           prot, flags, (UInt)fd, offset);
-#  elif defined(VGP_x86_dragonfly)
+#  elif defined(VGP_x86_freebsd) || defined(VGP_x86_dragonfly)
    if (flags & VKI_MAP_ANONYMOUS && fd == 0)
       fd = -1;
    res = VG_(do_syscall7)(__NR_mmap, (UWord)start, length,
 			  prot, flags, fd, offset, offset >> 32ul);
-#  elif defined(VGP_amd64_dragonfly)
-   if (flags & VKI_MAP_ANONYMOUS && fd == 0)
+#  elif defined(VGP_amd64_freebsd) || defined(VGP_arm64_freebsd) || defined(VGP_amd64_dragonfly)
+   if ((flags & VKI_MAP_ANONYMOUS) && fd == 0)
       fd = -1;
    res = VG_(do_syscall6)(__NR_mmap, (UWord)start, length,
 			  prot, flags, fd, offset);
@@ -224,7 +224,7 @@ SysRes ML_(am_do_extend_mapping_NO_NOTIFY)(
    /* Extend the mapping old_addr .. old_addr+old_len-1 to have length
       new_len, WITHOUT moving it.  If it can't be extended in place,
       fail. */
-#  if defined(VGO_linux)
+#  if defined(VGO_linux) || defined(VGO_solaris)
    return VG_(do_syscall5)(
              __NR_mremap, 
              old_addr, old_len, new_len, 
@@ -250,7 +250,7 @@ SysRes ML_(am_do_relocate_nooverlap_mapping_NO_NOTIFY)(
       location and with the new length.  Only needs to handle the case
       where the two areas do not overlap, neither length is zero, and
       all args are page aligned. */
-#  if defined(VGO_linux)
+#  if defined(VGO_linux) || defined(VGO_solaris)
    return VG_(do_syscall5)(
              __NR_mremap, 
              old_addr, old_len, new_len, 
@@ -272,11 +272,12 @@ SysRes ML_(am_do_relocate_nooverlap_mapping_NO_NOTIFY)(
 
 SysRes ML_(am_open) ( const HChar* pathname, Int flags, Int mode )
 {
-#  if defined(VGP_arm64_linux)
-   /* ARM64 wants to use __NR_openat rather than __NR_open. */
+#  if defined(VGP_arm64_linux) || defined(VGP_nanomips_linux) \
+      || defined(VGP_riscv64_linux)
+   /* More recent Linux platforms have only __NR_openat and no __NR_open. */
    SysRes res = VG_(do_syscall4)(__NR_openat,
                                  VKI_AT_FDCWD, (UWord)pathname, flags, mode);
-#  elif defined(VGO_linux) || defined(VGO_darwin) || defined(VGO_dragonfly)
+#  elif defined(VGO_linux) || defined(VGO_darwin) || defined(VGO_freebsd) || defined(VGO_dragonfly)
    SysRes res = VG_(do_syscall3)(__NR_open, (UWord)pathname, flags, mode);
 #  elif defined(VGO_solaris)
    SysRes res = VG_(do_syscall4)(__NR_openat, VKI_AT_FDCWD, (UWord)pathname,
@@ -301,10 +302,11 @@ void ML_(am_close) ( Int fd )
 Int ML_(am_readlink)(const HChar* path, HChar* buf, UInt bufsiz)
 {
    SysRes res;
-#  if defined(VGP_arm64_linux)
+#  if defined(VGP_arm64_linux) || defined(VGP_nanomips_linux) \
+      || defined(VGP_riscv64_linux)
    res = VG_(do_syscall4)(__NR_readlinkat, VKI_AT_FDCWD,
                                            (UWord)path, (UWord)buf, bufsiz);
-#  elif defined(VGO_linux) || defined(VGO_darwin) || defined(VGO_dragonfly)
+#  elif defined(VGO_linux) || defined(VGO_darwin) || defined(VGO_freebsd) || defined(VGO_dragonfly)
    res = VG_(do_syscall3)(__NR_readlink, (UWord)path, (UWord)buf, bufsiz);
 #  elif defined(VGO_solaris)
    res = VG_(do_syscall4)(__NR_readlinkat, VKI_AT_FDCWD, (UWord)path,
@@ -317,8 +319,12 @@ Int ML_(am_readlink)(const HChar* path, HChar* buf, UInt bufsiz)
 
 Int ML_(am_fcntl) ( Int fd, Int cmd, Addr arg )
 {
-#  if defined(VGO_linux) || defined(VGO_solaris) || defined(VGO_dragonfly)
+#  if defined(VGO_linux) || defined(VGO_solaris) || defined(VGO_freebsd) || defined(VGO_dragonfly)
+#  if defined(VGP_nanomips_linux)
+   SysRes res = VG_(do_syscall3)(__NR_fcntl64, fd, cmd, arg);
+#  else
    SysRes res = VG_(do_syscall3)(__NR_fcntl, fd, cmd, arg);
+#  endif
 #  elif defined(VGO_darwin)
    SysRes res = VG_(do_syscall3)(__NR_fcntl_nocancel, fd, cmd, arg);
 #  else
@@ -335,9 +341,22 @@ Bool ML_(am_get_fd_d_i_m)( Int fd,
 {
 #  if defined(VGO_linux) || defined(VGO_darwin) || defined(VGO_dragonfly)
    SysRes          res;
-   struct vki_stat buf;
+#  if defined(VGO_linux)
+   /* First try with statx. */
+   struct vki_statx bufx;
+   const char* file_name = "";
+   res = VG_(do_syscall5)(__NR_statx, fd, (RegWord)file_name,
+                          VKI_AT_EMPTY_PATH, VKI_STATX_ALL, (RegWord)&bufx);
+   if (!sr_isError(res)) {
+      *dev  = VG_MAKEDEV(bufx.stx_dev_major, bufx.stx_dev_minor);
+      *ino  = (ULong)bufx.stx_ino;
+      *mode = (UInt)bufx.stx_mode;
+      return True;
+   }
+#  endif // VGO_linux only
+
 #  if defined(VGO_linux) && defined(__NR_fstat64)
-   /* Try fstat64 first as it can cope with minor and major device
+   /* fstat64 is second candidate as it can cope with minor and major device
       numbers outside the 0-255 range and it works properly for x86
       binaries on amd64 systems where fstat seems to be broken. */
    struct vki_stat64 buf64;
@@ -348,7 +367,10 @@ Bool ML_(am_get_fd_d_i_m)( Int fd,
       *mode = (UInt) buf64.st_mode;
       return True;
    }
-#  endif
+#  endif // VGO_linux and defined __NR_fstat64
+
+#  if defined(__NR_fstat)
+   struct vki_stat buf;
    res = VG_(do_syscall2)(__NR_fstat, fd, (UWord)&buf);
    if (!sr_isError(res)) {
       *dev  = (ULong)buf.st_dev;
@@ -356,6 +378,7 @@ Bool ML_(am_get_fd_d_i_m)( Int fd,
       *mode = (UInt) buf.st_mode;
       return True;
    }
+#  endif // defined __NR_fstat
    return False;
 #  elif defined(VGO_solaris)
 #  if defined(VGP_x86_solaris)
@@ -374,12 +397,31 @@ Bool ML_(am_get_fd_d_i_m)( Int fd,
       return True;
    }
    return False;
+#  elif defined(VGO_freebsd)
+#if (__FreeBSD_version < 1200031)
+   struct vki_freebsd11_stat buf;
+   SysRes res = VG_(do_syscall2)(__NR_fstat, fd, (UWord)&buf);
+#else
+   struct vki_stat buf;
+   SysRes res = VG_(do_syscall2)(__NR_fstat, fd, (UWord)&buf);
+#endif
+   if (!sr_isError(res)) {
+      /*
+       * This gets compared to the value obtained by sysctl KERN_PROC_VMMAP.
+       * For some reson that only uses 32bits, so truncate this to match
+       */
+      *dev  = (UInt)buf.st_dev;
+      *ino  = (ULong)buf.st_ino;
+      *mode = (UInt) buf.st_mode;
+      return True;
+   }
+   return False;
 #  else
 #    error Unknown OS
 #  endif
 }
 
-#if defined(VGO_dragonfly)
+#if defined(VGO_freebsd)
 #define	M_FILEDESC_BUF	1000000
 static Char filedesc_buf[M_FILEDESC_BUF];
 #endif
@@ -396,6 +438,55 @@ Bool ML_(am_resolve_filename) ( Int fd, /*OUT*/HChar* buf, Int nbuf )
    else
       return False;
 
+#elif defined(VGO_freebsd)
+
+
+#if (1)
+   Int mib[4];
+   SysRes sres;
+   vki_size_t len;
+   Char *bp, *eb;
+   struct vki_kinfo_file *kf;
+
+   mib[0] = VKI_CTL_KERN;
+   mib[1] = VKI_KERN_PROC;
+   mib[2] = VKI_KERN_PROC_FILEDESC;
+   mib[3] = sr_Res(VG_(do_syscall0)(__NR_getpid));
+   len = sizeof(filedesc_buf);
+   sres = VG_(do_syscall6)(__NR___sysctl, (UWord)mib, 4, (UWord)filedesc_buf,
+      (UWord)&len, 0, 0);
+   if (sr_isError(sres)) {
+       VG_(debugLog)(0, "sysctl(kern.proc.filedesc)", "%s\n", VG_(strerror)(sr_Err(sres)));
+       ML_(am_exit)(1);
+   }
+   /* Walk though the list. */
+   bp = filedesc_buf;
+   eb = filedesc_buf + len;
+   while (bp < eb) {
+      kf = (struct vki_kinfo_file *)bp;
+      if (kf->vki_kf_fd == fd)
+         break;
+      bp += kf->vki_kf_structsize;
+   }
+   if (bp >= eb || *kf->vki_kf_path == '\0')
+     VG_(strncpy)( buf, "[unknown]", nbuf );
+   else
+     VG_(strncpy)( buf, kf->vki_kf_path, nbuf );
+   return True;
+#else
+   // PJF it will be a relief to get rid of the above bit of ugliness
+   struct vki_kinfo_file kinfo_file;
+   kinfo_file.vki_kf_structsize = VKI_KINFO_FILE_SIZE;
+   if (0 == ML_(am_fcntl) ( fd, VKI_F_KINFO, (Addr)&kinfo_file )) {
+      if (nbuf > 0) {
+         VG_(strncpy)( buf, kinfo_file.vki_kf_path, nbuf < VKI_PATH_MAX ? nbuf : VKI_PATH_MAX );
+         buf[nbuf-1] = 0;
+      }
+      if (buf[0] == '/') return True;
+   }
+   return False;
+#endif
+
 #elif defined(VGO_dragonfly)
    HChar tmp[VKI_MAXPATHLEN+1];
    if (0 == ML_(am_fcntl)(fd, VKI_F_GETPATH, (UWord)tmp)) {
@@ -405,7 +496,8 @@ Bool ML_(am_resolve_filename) ( Int fd, /*OUT*/HChar* buf, Int nbuf )
       }
       if (tmp[0] == '/') return True;
    }
-   return False;
+   return
+
 #elif defined(VGO_darwin)
    HChar tmp[VKI_MAXPATHLEN+1];
    if (0 == ML_(am_fcntl)(fd, VKI_F_GETPATH, (UWord)tmp)) {
@@ -416,6 +508,7 @@ Bool ML_(am_resolve_filename) ( Int fd, /*OUT*/HChar* buf, Int nbuf )
       if (tmp[0] == '/') return True;
    }
    return False;
+
 #elif defined(VGO_solaris)
    Int i;
    HChar tmp[64];

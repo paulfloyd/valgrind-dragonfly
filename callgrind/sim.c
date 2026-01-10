@@ -14,7 +14,7 @@
 
    This program is free software; you can redistribute it and/or
    modify it under the terms of the GNU General Public License as
-   published by the Free Software Foundation; either version 2 of the
+   published by the Free Software Foundation; either version 3 of the
    License, or (at your option) any later version.
 
    This program is distributed in the hope that it will be useful, but
@@ -23,9 +23,7 @@
    General Public License for more details.
 
    You should have received a copy of the GNU General Public License
-   along with this program; if not, write to the Free Software
-   Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
-   02111-1307, USA.
+   along with this program; if not, see <http://www.gnu.org/licenses/>.
 
    The GNU General Public License is contained in the file COPYING.
 */
@@ -1595,7 +1593,7 @@ void cachesim_printstat(Int l1, Int l2, Int l3)
 
 struct event_sets CLG_(sets);
 
-void CLG_(init_eventsets)()
+void CLG_(init_eventsets)(void)
 {
     // Event groups from which the event sets are composed
     // the "Use" group only is used with "cacheuse" simulation
@@ -1627,8 +1625,12 @@ void CLG_(init_eventsets)()
     if (CLG_(clo).collect_alloc)
 	CLG_(register_event_group2)(EG_ALLOC, "allocCount", "allocSize");
 
-    if (CLG_(clo).collect_systime)
-	CLG_(register_event_group2)(EG_SYS, "sysCount", "sysTime");
+    if (CLG_(clo).collect_systime != systime_no) {
+       if (CLG_(clo).collect_systime == systime_nsec)
+          CLG_(register_event_group3)(EG_SYS, "sysCount", "sysTime", "sysCpuTime");
+       else
+          CLG_(register_event_group2)(EG_SYS, "sysCount", "sysTime");
+    }
 
     // event set used as base for instruction self cost
     CLG_(sets).base = CLG_(get_event_set2)(EG_USE, EG_IR);
@@ -1672,6 +1674,7 @@ void CLG_(init_eventsets)()
     CLG_(append_event)(CLG_(dumpmap), "allocSize");
     CLG_(append_event)(CLG_(dumpmap), "sysCount");
     CLG_(append_event)(CLG_(dumpmap), "sysTime");
+    CLG_(append_event)(CLG_(dumpmap), "sysCpuTime");
 }
 
 

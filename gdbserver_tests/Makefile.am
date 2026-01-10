@@ -11,12 +11,19 @@ endif
 DIST_SUBDIRS = solaris
 
 dist_noinst_SCRIPTS = \
-	invoker simulate_control_c make_local_links \
-	filter_gdb filter_make_empty \
-	filter_memcheck_monitor filter_stderr filter_vgdb \
-	filter_helgrind_monitor filter_helgrind_monitor_solaris \
+	invoker simulate_control_c \
+	make_local_links \
+	filter_make_empty \
+	filter_helgrind_monitor \
+	filter_helgrind_monitor_solaris \
 	filter_passsigalrm \
 	send_signal
+
+noinst_SCRIPTS = \
+	filter_gdb \
+	filter_memcheck_monitor \
+	filter_stderr \
+	filter_vgdb
 
 EXTRA_DIST = \
 	README_DEVELOPERS \
@@ -86,11 +93,13 @@ EXTRA_DIST = \
 	mcsignopass.stderr.exp \
 	mcsignopass.stdinB.gdb \
 	mcsignopass.stdoutB.exp \
+	mcsignopass.stdoutB.exp-freebsd \
 	mcsignopass.vgtest \
 	mcsigpass.stderrB.exp \
 	mcsigpass.stderr.exp \
 	mcsigpass.stdinB.gdb \
 	mcsigpass.stdoutB.exp \
+	mcsigpass.stdoutB.exp-freebsd \
 	mcsigpass.vgtest \
 	mcvabits.stderrB.exp \
 	mcvabits.stderr.exp \
@@ -111,6 +120,7 @@ EXTRA_DIST = \
 	nlcontrolc.stderr.exp \
 	nlcontrolc.stdinB.gdb \
 	nlcontrolc.stdoutB.exp \
+	nlcontrolc.stdoutB.exp-freebsd \
 	nlcontrolc.vgtest \
 	nlfork_chain.stderr.exp \
 	nlfork_chain.stdout.exp \
@@ -155,17 +165,22 @@ check_PROGRAMS = \
 	clean_after_fork \
 	fork_chain \
 	gone \
-	main_pic \
 	passsigalrm \
 	self_invalidate \
 	sleepers \
 	t \
 	watchpoints
 
+if !VGCONF_OS_IS_FREEBSD
+  check_PROGRAMS += main_pic
+
+  main_pic_LDFLAGS = @FLAG_PIE@
+  main_pic_CFLAGS = $(AM_CFLAGS) -fPIC
+endif
+
 AM_CFLAGS   += $(AM_FLAG_M3264_PRI)
 AM_CXXFLAGS += $(AM_FLAG_M3264_PRI)
 
 LDADD = -lpthread
 
-main_pic_LDFLAGS = @FLAG_PIE@
-main_pic_CFLAGS	 = $(AM_CFLAGS) -fPIC
+sleepers_CFLAGS = ${AM_CFLAGS} @FLAG_W_NO_UNUSED_BUT_SET_VARIABLE@

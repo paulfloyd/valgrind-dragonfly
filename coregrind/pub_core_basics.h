@@ -12,7 +12,7 @@
 
    This program is free software; you can redistribute it and/or
    modify it under the terms of the GNU General Public License as
-   published by the Free Software Foundation; either version 2 of the
+   published by the Free Software Foundation; either version 3 of the
    License, or (at your option) any later version.
 
    This program is distributed in the hope that it will be useful, but
@@ -21,9 +21,7 @@
    General Public License for more details.
 
    You should have received a copy of the GNU General Public License
-   along with this program; if not, write to the Free Software
-   Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
-   02111-1307, USA.
+   along with this program; if not, see <http://www.gnu.org/licenses/>.
 
    The GNU General Public License is contained in the file COPYING.
 */
@@ -57,8 +55,10 @@
 
 typedef
    struct {
-      ULong r_pc; /* x86:EIP, amd64:RIP, ppc:CIA, arm:R15, mips:pc */
-      ULong r_sp; /* x86:ESP, amd64:RSP, ppc:R1,  arm:R13, mips:sp */
+      ULong r_pc; /* x86:EIP, amd64:RIP, ppc:CIA, arm:R15, mips:pc,
+                     riscv64: pc */
+      ULong r_sp; /* x86:ESP, amd64:RSP, ppc:R1,  arm:R13, mips:sp,
+                     riscv64: x2 */
       union {
          struct {
             UInt r_ebp;
@@ -85,6 +85,14 @@ typedef
          struct {
             ULong r_fp;
             ULong r_lr;
+            ULong r_f0;
+            ULong r_f1;
+            ULong r_f2;
+            ULong r_f3;
+            ULong r_f4;
+            ULong r_f5;
+            ULong r_f6;
+            ULong r_f7;
          } S390X;
          struct {
             UInt r30;  /* Stack frame pointer or subroutine variable  */
@@ -96,6 +104,10 @@ typedef
             ULong r31;  /* Return address of the last subroutine call */
             ULong r28;
          } MIPS64;
+         struct {
+            ULong r_fp; /* x8 */
+            ULong r_ra; /* x1 */
+         } RISCV64;
       } misc;
    }
    UnwindStartRegs;

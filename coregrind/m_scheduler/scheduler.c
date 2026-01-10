@@ -12,7 +12,7 @@
 
    This program is free software; you can redistribute it and/or
    modify it under the terms of the GNU General Public License as
-   published by the Free Software Foundation; either version 2 of the
+   published by the Free Software Foundation; either version 3 of the
    License, or (at your option) any later version.
 
    This program is distributed in the hope that it will be useful, but
@@ -21,9 +21,7 @@
    General Public License for more details.
 
    You should have received a copy of the GNU General Public License
-   along with this program; if not, write to the Free Software
-   Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
-   02111-1307, USA.
+   along with this program; if not, see <http://www.gnu.org/licenses/>.
 
    The GNU General Public License is contained in the file COPYING.
 */
@@ -68,6 +66,7 @@
 #include "pub_core_clreq.h"      // for VG_USERREQ__*
 #include "pub_core_dispatch.h"
 #include "pub_core_errormgr.h"   // For VG_(get_n_errs_found)()
+#include "pub_core_extension.h"
 #include "pub_core_gdbserver.h"  // for VG_(gdbserver)/VG_(gdbserver_activity)
 #include "pub_core_libcbase.h"
 #include "pub_core_libcassert.h"
@@ -103,11 +102,6 @@
 
 /* ThreadId and ThreadState are defined elsewhere*/
 
-/* Defines the thread-scheduling timeslice, in terms of the number of
-   basic blocks we attempt to run each thread for.  Smaller values
-   give finer interleaving but much increased scheduling overheads. */
-#define SCHEDULING_QUANTUM   100000
-
 /* If False, a fault is Valgrind-internal (ie, a bug) */
 Bool VG_(in_generated_code) = False;
 
@@ -130,16 +124,23 @@ static void mostly_clear_thread_record ( ThreadId tid );
 static ULong n_scheduling_events_MINOR = 0;
 static ULong n_scheduling_events_MAJOR = 0;
 
-/* Stats: number of XIndirs, and number that missed in the fast
-   cache. */
-static ULong stats__n_xindirs = 0;
-static ULong stats__n_xindir_misses = 0;
+/* Stats: number of XIndirs looked up in the fast cache, the number of hits in
+   ways 1, 2 and 3, and the number of misses.  The number of hits in way 0 isn't
+   recorded because it can be computed from these five numbers. */
+static ULong stats__n_xIndirs = 0;
+static ULong stats__n_xIndir_hits1 = 0;
+static ULong stats__n_xIndir_hits2 = 0;
+static ULong stats__n_xIndir_hits3 = 0;
+static ULong stats__n_xIndir_misses = 0;
 
 /* And 32-bit temp bins for the above, so that 32-bit platforms don't
    have to do 64 bit incs on the hot path through
-   VG_(cp_disp_xindir). */
-/*global*/ UInt VG_(stats__n_xindirs_32) = 0;
-/*global*/ UInt VG_(stats__n_xindir_misses_32) = 0;
+   VG_(disp_cp_xindir). */
+/*global*/ UInt VG_(stats__n_xIndirs_32) = 0;
+/*global*/ UInt VG_(stats__n_xIndir_hits1_32) = 0;
+/*global*/ UInt VG_(stats__n_xIndir_hits2_32) = 0;
+/*global*/ UInt VG_(stats__n_xIndir_hits3_32) = 0;
+/*global*/ UInt VG_(stats__n_xIndir_misses_32) = 0;
 
 /* Sanity checking counts. */
 static UInt sanity_fast_count = 0;
@@ -149,11 +150,25 @@ void VG_(print_scheduler_stats)(void)
 {
    VG_(message)(Vg_DebugMsg,
       "scheduler: %'llu event checks.\n", bbs_done );
+
+   const ULong hits0
+      = stats__n_xIndirs - stats__n_xIndir_hits1 - stats__n_xIndir_hits2
+        - stats__n_xIndir_hits3 - stats__n_xIndir_misses;
    VG_(message)(Vg_DebugMsg,
-                "scheduler: %'llu indir transfers, %'llu misses (1 in %llu)\n",
-                stats__n_xindirs, stats__n_xindir_misses,
-                stats__n_xindirs / (stats__n_xindir_misses 
-                                    ? stats__n_xindir_misses : 1));
+                "scheduler: %'llu indir transfers, "
+                "%'llu misses (1 in %llu) ..\n",
+                stats__n_xIndirs, stats__n_xIndir_misses,
+                stats__n_xIndirs / (stats__n_xIndir_misses
+                                   ? stats__n_xIndir_misses : 1));
+   VG_(message)(Vg_DebugMsg,
+                "scheduler: .. of which: %'llu hit0, %'llu hit1, "
+                "%'llu hit2, %'llu hit3, %'llu missed\n",
+                hits0,
+                stats__n_xIndir_hits1,
+                stats__n_xIndir_hits2,
+                stats__n_xIndir_hits3,
+                stats__n_xIndir_misses);
+
    VG_(message)(Vg_DebugMsg,
       "scheduler: %'llu/%'llu major/minor sched events.\n",
       n_scheduling_events_MAJOR, n_scheduling_events_MINOR);
@@ -263,6 +278,7 @@ const HChar* name_of_sched_event ( UInt event )
       case VEX_TRC_JMP_YIELD:          return "YIELD";
       case VEX_TRC_JMP_NODECODE:       return "NODECODE";
       case VEX_TRC_JMP_MAPFAIL:        return "MAPFAIL";
+      case VEX_TRC_JMP_EXTENSION:      return "EXTENSION";
       case VEX_TRC_JMP_SYS_SYSCALL:    return "SYSCALL";
       case VEX_TRC_JMP_SYS_INT32:      return "INT32";
       case VEX_TRC_JMP_SYS_INT128:     return "INT128";
@@ -500,7 +516,7 @@ void VG_(vg_yield)(void)
    /* 
       Tell the kernel we're yielding.
     */
-#  if defined(VGO_linux) || defined(VGO_darwin) || defined(VGO_dragonfly)
+#  if defined(VGO_linux) || defined(VGO_darwin) || defined(VGO_freebsd)|| defined(VGO_dragonfly)
    VG_(do_syscall0)(__NR_sched_yield);
 #  elif defined(VGO_solaris)
    VG_(do_syscall0)(__NR_yield);
@@ -526,6 +542,7 @@ static void block_signals(void)
    VG_(sigdelset)(&mask, VKI_SIGFPE);
    VG_(sigdelset)(&mask, VKI_SIGILL);
    VG_(sigdelset)(&mask, VKI_SIGTRAP);
+   VG_(sigdelset)(&mask, VKI_SIGSYS);
 
    /* Can't block these anyway */
    VG_(sigdelset)(&mask, VKI_SIGSTOP);
@@ -541,7 +558,7 @@ static void os_state_clear(ThreadState *tst)
    tst->os_state.stk_id = NULL_STK_ID;
 #  if defined(VGO_linux)
    /* no other fields to clear */
-#  elif defined(VGO_dragonfly)
+#  elif defined(VGO_freebsd)|| defined(VGO_dragonfly)
    /* no other fields to clear */
 #  elif defined(VGO_darwin)
    tst->os_state.post_mach_trap_fn = NULL;
@@ -580,7 +597,7 @@ void mostly_clear_thread_record ( ThreadId tid )
 {
    vki_sigset_t savedmask;
 
-   vg_assert(tid >= 0 && tid < VG_N_THREADS);
+   vg_assert(tid < VG_N_THREADS);
    VG_(cleanup_thread)(&VG_(threads)[tid].arch);
    VG_(threads)[tid].tid = tid;
 
@@ -876,6 +893,10 @@ static void do_pre_run_checks ( volatile ThreadState* tst )
 #  if defined(VGA_mips32) || defined(VGA_mips64)
    /* no special requirements */
 #  endif
+
+#  if defined(VGA_riscv64)
+   /* no special requirements */
+#  endif
 }
 
 // NO_VGDB_POLL value ensures vgdb is not polled, while
@@ -930,8 +951,11 @@ void run_thread_for_a_while ( /*OUT*/HWord* two_words,
    /* end Paranoia */
 
    /* Futz with the XIndir stats counters. */
-   vg_assert(VG_(stats__n_xindirs_32) == 0);
-   vg_assert(VG_(stats__n_xindir_misses_32) == 0);
+   vg_assert(VG_(stats__n_xIndirs_32) == 0);
+   vg_assert(VG_(stats__n_xIndir_hits1_32) == 0);
+   vg_assert(VG_(stats__n_xIndir_hits2_32) == 0);
+   vg_assert(VG_(stats__n_xIndir_hits3_32) == 0);
+   vg_assert(VG_(stats__n_xIndir_misses_32) == 0);
 
    /* Clear return area. */
    two_words[0] = two_words[1] = 0;
@@ -942,10 +966,13 @@ void run_thread_for_a_while ( /*OUT*/HWord* two_words,
       host_code_addr = alt_host_addr;
    } else {
       /* normal case -- redir translation */
-      UInt cno = (UInt)VG_TT_FAST_HASH((Addr)tst->arch.vex.VG_INSTR_PTR);
-      if (LIKELY(VG_(tt_fast)[cno].guest == (Addr)tst->arch.vex.VG_INSTR_PTR))
-         host_code_addr = VG_(tt_fast)[cno].host;
-      else {
+      Addr host_from_fast_cache = 0;
+      Bool found_in_fast_cache
+         = VG_(lookupInFastCache)( &host_from_fast_cache,
+                                   (Addr)tst->arch.vex.VG_INSTR_PTR );
+      if (found_in_fast_cache) {
+         host_code_addr = host_from_fast_cache;
+      } else {
          Addr res = 0;
          /* not found in VG_(tt_fast). Searching here the transtab
             improves the performance compared to returning directly
@@ -979,9 +1006,12 @@ void run_thread_for_a_while ( /*OUT*/HWord* two_words,
 
    /* Invalidate any in-flight LL/SC transactions, in the case that we're
       using the fallback LL/SC implementation.  See bugs 344524 and 369459. */
-#  if defined(VGP_mips32_linux) || defined(VGP_mips64_linux)
+#  if defined(VGP_mips32_linux) || defined(VGP_mips64_linux) \
+      || defined(VGP_nanomips_linux)
    tst->arch.vex.guest_LLaddr = (RegWord)(-1);
-#  elif defined(VGP_arm64_linux)
+#  elif defined(VGP_arm64_linux) || defined(VGP_arm64_freebsd)
+   tst->arch.vex.guest_LLSC_SIZE = 0;
+#  elif defined(VGP_riscv64_linux)
    tst->arch.vex.guest_LLSC_SIZE = 0;
 #  endif
 
@@ -1029,10 +1059,16 @@ void run_thread_for_a_while ( /*OUT*/HWord* two_words,
    /* Merge the 32-bit XIndir/miss counters into the 64 bit versions,
       and zero out the 32-bit ones in preparation for the next run of
       generated code. */
-   stats__n_xindirs += (ULong)VG_(stats__n_xindirs_32);
-   VG_(stats__n_xindirs_32) = 0;
-   stats__n_xindir_misses += (ULong)VG_(stats__n_xindir_misses_32);
-   VG_(stats__n_xindir_misses_32) = 0;
+   stats__n_xIndirs += (ULong)VG_(stats__n_xIndirs_32);
+   VG_(stats__n_xIndirs_32) = 0;
+   stats__n_xIndir_hits1 += (ULong)VG_(stats__n_xIndir_hits1_32);
+   VG_(stats__n_xIndir_hits1_32) = 0;
+   stats__n_xIndir_hits2 += (ULong)VG_(stats__n_xIndir_hits2_32);
+   VG_(stats__n_xIndir_hits2_32) = 0;
+   stats__n_xIndir_hits3 += (ULong)VG_(stats__n_xIndir_hits3_32);
+   VG_(stats__n_xIndir_hits3_32) = 0;
+   stats__n_xIndir_misses += (ULong)VG_(stats__n_xIndir_misses_32);
+   VG_(stats__n_xIndir_misses_32) = 0;
 
    /* Inspect the event counter. */
    vg_assert((Int)tst->arch.vex.host_EvC_COUNTER >= -1);
@@ -1195,6 +1231,29 @@ static void handle_syscall(ThreadId tid, UInt trc)
    }
 }
 
+static void handle_extension(ThreadId tid)
+{
+   volatile UWord jumped;
+   enum ExtensionError err;
+
+   SCHEDSETJMP(tid, jumped, err = VG_(client_extension)(tid));
+   vg_assert(VG_(is_running_thread)(tid));
+
+   if (jumped != (UWord)0) {
+      block_signals();
+      VG_(poll_signals)(tid);
+   } else if (err != ExtErr_OK) {
+      Addr addr = VG_(get_IP)(tid);
+      switch (err) {
+      case ExtErr_Illop:
+         VG_(synth_sigill)(tid, addr);
+         break;
+      default:
+         VG_(core_panic)("scheduler: bad return code from extension");
+      }
+   }
+}
+
 /* tid just requested a jump to the noredir version of its current
    program counter.  So make up that translation if needed, run it,
    and return the resulting thread return code in two_words[]. */
@@ -1293,10 +1352,6 @@ VgSchedReturnCode VG_(scheduler) ( ThreadId tid )
          else
             VG_(disable_vgdb_poll) ();
 
-         vg_assert (VG_(dyn_vgdb_error) == VG_(clo_vgdb_error));
-         /* As we are initializing, VG_(dyn_vgdb_error) can't have been
-            changed yet. */
-
          VG_(gdbserver_prerun_action) (1);
       } else {
          VG_(disable_vgdb_poll) ();
@@ -1319,8 +1374,36 @@ VgSchedReturnCode VG_(scheduler) ( ThreadId tid )
                to be added without risk of overflow. */
          }
       } else {
+          /*
+           * glibc 2.34 no longer has stack_cache_actsize as a visible variable
+           * so we switch to using the GLIBC_TUNABLES env var. Processing for that
+           * is done in initimg-linux.c / setup_client_env  for all glibc
+           *
+           * If we don't detect stack_cache_actsize we want to be able to tell
+           * whether it is an unexpected error or if it is no longer there.
+           * In the latter case we don't print a warning.
+           */
+          Bool print_warning = True;
+          if (VG_(client__gnu_get_libc_version_addr) != NULL) {
+              const HChar* gnu_libc_version = VG_(client__gnu_get_libc_version_addr)();
+              if (gnu_libc_version != NULL) {
+                  HChar* glibc_version_tok = VG_(strdup)("scheduler.1", gnu_libc_version);
+                  const HChar* str_major = VG_(strtok)(glibc_version_tok, ".");
+                  Long major = VG_(strtoll10)(str_major, NULL);
+                  const HChar* str_minor = VG_(strtok)(NULL, ".");
+                  Long minor = VG_(strtoll10)(str_minor, NULL);
+                  if (major >= 2 && minor >= 34) {
+                      print_warning = False;
+                  }
+                  VG_(free)(glibc_version_tok);
+              }
+          } else {
+
+          }
+          if (print_warning) {
           VG_(debugLog)(0,"sched",
                         "WARNING: pthread stack cache cannot be disabled!\n");
+          }
           VG_(clo_sim_hints) &= ~SimHint2S(SimHint_no_nptl_pthread_stackcache);
           /* Remove SimHint_no_nptl_pthread_stackcache from VG_(clo_sim_hints)
              to avoid having a msg for all following threads. */
@@ -1332,7 +1415,7 @@ VgSchedReturnCode VG_(scheduler) ( ThreadId tid )
    
    vg_assert(VG_(is_running_thread)(tid));
 
-   dispatch_ctr = SCHEDULING_QUANTUM;
+   dispatch_ctr = VG_(clo_scheduling_quantum);
 
    while (!VG_(is_exiting)(tid)) {
 
@@ -1383,7 +1466,7 @@ VgSchedReturnCode VG_(scheduler) ( ThreadId tid )
 	 n_scheduling_events_MAJOR++;
 
 	 /* Figure out how many bbs to ask vg_run_innerloop to do. */
-         dispatch_ctr = SCHEDULING_QUANTUM;
+         dispatch_ctr = VG_(clo_scheduling_quantum);
 
 	 /* paranoia ... */
 	 vg_assert(tst->tid == tid);
@@ -1490,6 +1573,11 @@ VgSchedReturnCode VG_(scheduler) ( ThreadId tid )
 	 do_client_request(tid);
 	 break;
 
+      case VEX_TRC_JMP_EXTENSION: {
+         handle_extension(tid);
+         break;
+      }
+
       case VEX_TRC_JMP_SYS_INT128:  /* x86-linux */
       case VEX_TRC_JMP_SYS_INT129:  /* x86-darwin */
       case VEX_TRC_JMP_SYS_INT130:  /* x86-darwin */
@@ -1498,7 +1586,7 @@ VgSchedReturnCode VG_(scheduler) ( ThreadId tid )
       /* amd64-linux, ppc32-linux, amd64-darwin, amd64-solaris */
       case VEX_TRC_JMP_SYS_SYSCALL:
 	 handle_syscall(tid, trc[0]);
-	 if (VG_(clo_sanity_level) > 2)
+         if (VG_(clo_sanity_level) >= 3)
 	    VG_(sanity_check_general)(True); /* sanity-check every syscall */
 	 break;
 
@@ -1766,9 +1854,12 @@ void VG_(nuke_all_threads_except) ( ThreadId me, VgSchedReturnCode src )
 #elif defined (VGA_s390x)
 #  define VG_CLREQ_ARGS       guest_r2
 #  define VG_CLREQ_RET        guest_r3
-#elif defined(VGA_mips32) || defined(VGA_mips64)
+#elif defined(VGA_mips32) || defined(VGA_mips64) || defined(VGA_nanomips)
 #  define VG_CLREQ_ARGS       guest_r12
 #  define VG_CLREQ_RET        guest_r11
+#elif defined(VGA_riscv64)
+#  define VG_CLREQ_ARGS       guest_x14
+#  define VG_CLREQ_RET        guest_x13
 #else
 #  error Unknown arch
 #endif
@@ -1891,7 +1982,7 @@ Int print_client_message( ThreadId tid, const HChar *format,
       VG_(get_and_pp_StackTrace)( tid, VG_(clo_backtrace_size) );
    
    if (VG_(clo_xml))
-      VG_(printf_xml)( "</clientmsg>\n" );
+      VG_(printf_xml)( "</clientmsg>\n\n" );
 
    return count;
 }
@@ -2024,6 +2115,7 @@ void do_client_request ( ThreadId tid )
       case VG_USERREQ__STACK_REGISTER: {
          UWord sid = VG_(register_stack)((Addr)arg[1], (Addr)arg[2]);
          SET_CLREQ_RETVAL( tid, sid );
+         VG_TRACK(register_stack, (Addr)arg[1], (Addr)arg[2]);
          break; }
 
       case VG_USERREQ__STACK_DEREGISTER: {
@@ -2044,14 +2136,23 @@ void do_client_request ( ThreadId tid )
 	 info->tl_realloc              = VG_(tdict).tool_realloc;
 	 info->tl_memalign             = VG_(tdict).tool_memalign;
 	 info->tl___builtin_new        = VG_(tdict).tool___builtin_new;
+	 info->tl___builtin_new_aligned = VG_(tdict).tool___builtin_new_aligned;
 	 info->tl___builtin_vec_new    = VG_(tdict).tool___builtin_vec_new;
+	 info->tl___builtin_vec_new_aligned    = VG_(tdict).tool___builtin_vec_new_aligned;
 	 info->tl_free                 = VG_(tdict).tool_free;
 	 info->tl___builtin_delete     = VG_(tdict).tool___builtin_delete;
+	 info->tl___builtin_delete_aligned     = VG_(tdict).tool___builtin_delete_aligned;
 	 info->tl___builtin_vec_delete = VG_(tdict).tool___builtin_vec_delete;
+	 info->tl___builtin_vec_delete_aligned = VG_(tdict).tool___builtin_vec_delete_aligned;
          info->tl_malloc_usable_size   = VG_(tdict).tool_malloc_usable_size;
-
+#if defined(VGO_linux) || defined(VGO_solaris)
 	 info->mallinfo                = VG_(mallinfo);
+#endif
+#if defined(VGO_linux)
+	 info->mallinfo2               = VG_(mallinfo2);
+#endif
 	 info->clo_trace_malloc        = VG_(clo_trace_malloc);
+         info->clo_realloc_zero_bytes_frees    = VG_(clo_realloc_zero_bytes_frees);
 
          SET_CLREQ_RETVAL( tid, 0 );     /* return value is meaningless */
 
@@ -2084,6 +2185,11 @@ void do_client_request ( ThreadId tid )
 
       case VG_USERREQ__COUNT_ERRORS:  
          SET_CLREQ_RETVAL( tid, VG_(get_n_errs_found)() );
+         break;
+
+      case VG_USERREQ__CLO_CHANGE:
+         VG_(process_dynamic_option) (cloD, (HChar *)arg[1]);
+         SET_CLREQ_RETVAL( tid, 0 );     /* return value is meaningless */
          break;
 
       case VG_USERREQ__LOAD_PDB_DEBUGINFO:
@@ -2214,7 +2320,7 @@ void do_client_request ( ThreadId tid )
       "to recompile such code, using the header files from this version of\n"
       "Valgrind, and not any previous version.\n"
       "\n"
-      "If you see this mesage in any other circumstances, it is probably\n"
+      "If you see this message in any other circumstances, it is probably\n"
       "a bug in Valgrind.  In this case, please file a bug report at\n"
       "\n"
       "   http://www.valgrind.org/support/bug_reports.html\n"
@@ -2307,7 +2413,7 @@ void VG_(sanity_check_general) ( Bool force_expensive )
       Gradually increase the interval between such checks so as not to
       burden long-running programs too much. */
    if ( force_expensive
-        || VG_(clo_sanity_level) > 1
+        || VG_(clo_sanity_level) >= 2
         || (VG_(clo_sanity_level) == 1 
             && sanity_fast_count == next_slow_check_at)) {
 
@@ -2347,7 +2453,7 @@ void VG_(sanity_check_general) ( Bool force_expensive )
       }
    }
 
-   if (VG_(clo_sanity_level) > 1) {
+   if (VG_(clo_sanity_level) >= 2) {
       /* Check sanity of the low-level memory manager.  Note that bugs
          in the client's code can cause this to fail, so we don't do
          this check unless specially asked for.  And because it's

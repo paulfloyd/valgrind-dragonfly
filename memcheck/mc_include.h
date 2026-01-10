@@ -13,7 +13,7 @@
 
    This program is free software; you can redistribute it and/or
    modify it under the terms of the GNU General Public License as
-   published by the Free Software Foundation; either version 2 of the
+   published by the Free Software Foundation; either version 3 of the
    License, or (at your option) any later version.
 
    This program is distributed in the hope that it will be useful, but
@@ -22,9 +22,7 @@
    General Public License for more details.
 
    You should have received a copy of the GNU General Public License
-   along with this program; if not, write to the Free Software
-   Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
-   02111-1307, USA.
+   along with this program; if not, see <http://www.gnu.org/licenses/>.
 
    The GNU General Public License is contained in the file COPYING.
 */
@@ -67,6 +65,7 @@ typedef
       Addr         data;            // Address of the actual block.
       SizeT        szB : (sizeof(SizeT)*8)-2; // Size requested; 30 or 62 bits.
       MC_AllocKind allockind : 2;   // Which operation did the allocation.
+      SizeT        alignB;          // Alignment (if requested) of the allocation
       ExeContext*  where[0];
       /* Variable-length array. The size depends on MC_(clo_keep_stacktraces).
          This array optionally stores the alloc and/or free stack trace. */
@@ -103,6 +102,7 @@ typedef
 
 void* MC_(new_block)  ( ThreadId tid,
                         Addr p, SizeT size, SizeT align,
+                        SizeT orig_align,
                         Bool is_zeroed, MC_AllocKind kind,
                         VgHashTable *table);
 void MC_(handle_free) ( ThreadId tid,
@@ -152,12 +152,16 @@ SizeT MC_(get_cmalloc_n_frees) ( void );
 
 void* MC_(malloc)               ( ThreadId tid, SizeT n );
 void* MC_(__builtin_new)        ( ThreadId tid, SizeT n );
+void* MC_(__builtin_new_aligned)( ThreadId tid, SizeT n, SizeT alignB, SizeT orig_alignB );
 void* MC_(__builtin_vec_new)    ( ThreadId tid, SizeT n );
-void* MC_(memalign)             ( ThreadId tid, SizeT align, SizeT n );
+void* MC_(__builtin_vec_new_aligned)    ( ThreadId tid, SizeT n, SizeT alignB, SizeT orig_alignB );
+void* MC_(memalign)             ( ThreadId tid, SizeT align, SizeT orig_alignB, SizeT n);
 void* MC_(calloc)               ( ThreadId tid, SizeT nmemb, SizeT size1 );
 void  MC_(free)                 ( ThreadId tid, void* p );
 void  MC_(__builtin_delete)     ( ThreadId tid, void* p );
+void  MC_(__builtin_delete_aligned)     ( ThreadId tid, void* p, SizeT alignB );
 void  MC_(__builtin_vec_delete) ( ThreadId tid, void* p );
+void  MC_(__builtin_vec_delete_aligned) ( ThreadId tid, void* p, SizeT alignB );
 void* MC_(realloc)              ( ThreadId tid, void* p, SizeT new_size );
 SizeT MC_(malloc_usable_size)   ( ThreadId tid, void* p );
 
@@ -428,10 +432,11 @@ typedef
 
 typedef
    enum {
-      LCD_Any,       // output all loss records, whatever the delta
-      LCD_Increased, // output loss records with an increase in size or blocks
-      LCD_Changed,   // output loss records with an increase or 
-                     //decrease in size or blocks
+      LCD_Any,       // Output all loss records, whatever the delta.
+      LCD_Increased, // Output loss records with an increase in size or blocks.
+      LCD_Changed,   // Output loss records with an increase or
+                     // decrease in size or blocks.
+      LCD_New        // Output new loss records.
    }
    LeakCheckDeltaMode;
 
@@ -452,9 +457,9 @@ typedef
       SizeT szB;          // Sum of all MC_Chunk.szB values.
       SizeT indirect_szB; // Sum of all LC_Extra.indirect_szB values.
       UInt  num_blocks;   // Number of blocks represented by the record.
+      UInt  old_num_blocks;   // output only the changed/new loss records
       SizeT old_szB;          // old_* values are the values found during the 
       SizeT old_indirect_szB; // previous leak search. old_* values are used to
-      UInt  old_num_blocks;   // output only the changed/new loss records
    }
    LossRecord;
 
@@ -552,6 +557,9 @@ void MC_(record_jump_error)    ( ThreadId tid, Addr a );
 void MC_(record_free_error)            ( ThreadId tid, Addr a ); 
 void MC_(record_illegal_mempool_error) ( ThreadId tid, Addr a );
 void MC_(record_freemismatch_error)    ( ThreadId tid, MC_Chunk* mc );
+void MC_(record_realloc_size_zero)     ( ThreadId tid, Addr a );
+void MC_(record_bad_alignment)         ( ThreadId tid, SizeT align, SizeT size, const HChar *msg);
+void MC_(record_unsafe_zero_size)      ( ThreadId tid);
 
 void MC_(record_overlap_error)  ( ThreadId tid, const HChar* function,
                                   Addr src, Addr dst, SizeT szB );
@@ -571,6 +579,9 @@ Bool MC_(record_leak_error)     ( ThreadId tid,
 
 Bool MC_(record_fishy_value_error)  ( ThreadId tid, const HChar* function,
                                       const HChar *argument_name, SizeT value );
+void MC_(record_size_mismatch_error) ( ThreadId tid, MC_Chunk* mc, SizeT size, const HChar *function_names );
+void MC_(record_align_mismatch_error) ( ThreadId tid, MC_Chunk* mc, SizeT align, Bool default_delete, const HChar *function_names );
+
 
 /* Leak kinds tokens to call VG_(parse_enum_set). */
 extern const HChar* MC_(parse_leak_kinds_tokens);
@@ -723,6 +734,9 @@ extern Int MC_(clo_mc_level);
 
 /* Should we show mismatched frees?  Default: YES */
 extern Bool MC_(clo_show_mismatched_frees);
+
+/* Should we warn about deprecated realloc() of size 0 ? Default : YES */
+extern Bool MC_(clo_show_realloc_size_zero);
 
 /* Indicates the level of detail for Vbit tracking through integer add,
    subtract, and some integer comparison operations. */

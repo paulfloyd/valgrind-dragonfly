@@ -13,7 +13,7 @@
 
    This program is free software; you can redistribute it and/or
    modify it under the terms of the GNU General Public License as
-   published by the Free Software Foundation; either version 2 of the
+   published by the Free Software Foundation; either version 3 of the
    License, or (at your option) any later version.
 
    This program is distributed in the hope that it will be useful, but
@@ -22,15 +22,13 @@
    General Public License for more details.
 
    You should have received a copy of the GNU General Public License
-   along with this program; if not, write to the Free Software
-   Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
-   02111-1307, USA.
+   along with this program; if not, see <http://www.gnu.org/licenses/>.
 
    The GNU General Public License is contained in the file COPYING.
 */
 
-#if defined(VGO_linux) || defined(VGO_darwin) || defined(VGO_solaris) || defined(VGO_dragonfly)
-
+#if defined(VGO_linux) || defined(VGO_darwin) || defined(VGO_solaris) || defined(VGO_freebsd)
+|| defined(VGO_dragonfly)
 #include "pub_core_basics.h"
 #include "pub_core_debuginfo.h"
 #include "pub_core_libcbase.h"
@@ -324,6 +322,123 @@ void process_extended_line_op( struct _DebugInfo* di,
 ////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////
 
+static
+HChar * get_line_str (struct _DebugInfo* di, const UnitInfo* ui,
+                      DiCursor *data, const UInt form,
+                      DiCursor debugstr_img, DiCursor debuglinestr_img)
+{
+   HChar *str = NULL;
+   switch (form) {
+   case DW_FORM_string:
+      str = ML_(cur_step_strdup)(data, "di.gls.string");
+      break;
+   case DW_FORM_strp:
+      if (!ui->dw64)
+         str = ML_(cur_read_strdup)(ML_(cur_plus)(debugstr_img,
+                                                  ML_(cur_step_UInt)(data)),
+                                    "di.gls.strp.dw32");
+      else
+         str = ML_(cur_read_strdup)(ML_(cur_plus)(debugstr_img,
+                                                  ML_(cur_step_ULong)(data)),
+                                    "di.gls.strp.dw64");
+      break;
+   case DW_FORM_line_strp:
+      if (!ui->dw64)
+         str = ML_(cur_read_strdup)(ML_(cur_plus)(debuglinestr_img,
+                                                  ML_(cur_step_UInt)(data)),
+                                    "di.gls.line_strp.dw32");
+      else
+         str = ML_(cur_read_strdup)(ML_(cur_plus)(debuglinestr_img,
+                                                  ML_(cur_step_ULong)(data)),
+                                    "di.gls.line_strp.dw64");
+      break;
+   default:
+      ML_(symerr)(di, True,
+                  "Unknown path string FORM in .debug_line");
+      break;
+   }
+   return str;
+}
+
+static
+Int get_line_ndx (struct _DebugInfo* di,
+                  DiCursor *data, const UInt form)
+{
+   Int res = 0;
+   switch (form) {
+   case DW_FORM_data1:
+      res = ML_(cur_step_UChar)(data);
+      break;
+   case DW_FORM_data2:
+      res = ML_(cur_step_UShort)(data);
+      break;
+   case DW_FORM_udata:
+      res = step_leb128U(data);
+      break;
+   default:
+      ML_(symerr)(di, True,
+                  "Unknown directory_index value FORM in .debug_line");
+      break;
+   }
+   return res;
+}
+
+static
+DiCursor skip_line_form (struct _DebugInfo* di, const UnitInfo* ui,
+                         DiCursor d, const UInt form)
+{
+   switch (form) {
+   case DW_FORM_block: {
+      ULong len = step_leb128U(&d);
+      d = ML_(cur_plus)(d, len);
+      break;
+   }
+   case DW_FORM_block1:
+      d = ML_(cur_plus)(d, ML_(cur_read_UChar)(d) + 1);
+      break;
+   case DW_FORM_block2:
+      d = ML_(cur_plus)(d, ML_(cur_read_UShort)(d) + 2);
+      break;
+   case DW_FORM_block4:
+      d = ML_(cur_plus)(d, ML_(cur_read_UInt)(d) + 4);
+      break;
+   case DW_FORM_flag:
+   case DW_FORM_data1:
+      d = ML_(cur_plus)(d, 1);
+      break;
+   case DW_FORM_data2:
+      d = ML_(cur_plus)(d, 2);
+      break;
+   case DW_FORM_data4:
+      d = ML_(cur_plus)(d, 4);
+      break;
+   case DW_FORM_data8:
+      d = ML_(cur_plus)(d, 8);
+      break;
+   case DW_FORM_data16:
+      d = ML_(cur_plus)(d, 16);
+      break;
+   case DW_FORM_string:
+      d = ML_(cur_plus)(d, ML_(cur_strlen)(d) + 1);
+      break;
+   case DW_FORM_strp:
+   case DW_FORM_line_strp:
+   case DW_FORM_sec_offset:
+      d = ML_(cur_plus)(d, ui->dw64 ? 8 : 4);
+      break;
+   case DW_FORM_udata:
+      (void)step_leb128U(&d);
+      break;
+   case DW_FORM_sdata:
+      (void)step_leb128S(&d);
+      break;
+   default:
+      ML_(symerr)(di, True, "Unknown FORM in .debug_line");
+      break;
+   }
+   return d;
+}
+
 /* read a .debug_line section block for a compilation unit
  *
  * Input:   - theBlock must point to the start of the block
@@ -337,7 +452,9 @@ static
 void read_dwarf2_lineblock ( struct _DebugInfo* di,
                              const UnitInfo* ui, 
                              DiCursor  theBlock, /* IMAGE */
-                             Int       noLargerThan )
+                             Int       noLargerThan,
+                             DiCursor  debugstr_img,
+                             DiCursor  debuglinestr_img)
 {
    Int            i;
    DebugLineInfo  info;
@@ -349,6 +466,9 @@ void read_dwarf2_lineblock ( struct _DebugInfo* di,
 
    DiCursor       external = theBlock;
    DiCursor       data = theBlock;
+
+   UChar          p_ndx = 0, d_ndx = 0; /* DWARF5 path and dir index. */
+   UInt           forms[256];           /* DWARF5 forms. */
 
    /* fndn_ix_xa is an xarray of fndn_ix (indexes in di->fndnpool) which
       are build from file names harvested from the DWARF2
@@ -374,17 +494,6 @@ void read_dwarf2_lineblock ( struct _DebugInfo* di,
    fndn_ix_xa = VG_(newXA) (ML_(dinfo_zalloc), "di.rd2l.2", ML_(dinfo_free),
                             sizeof(UInt) );
 
-   /* DWARF2 starts numbering filename entries at 1, so we need to
-      add a dummy zeroth entry to the table. */
-   fndn_ix = 0; // 0 is the "null" index in a fixed pool.
-   VG_(addToXA) (fndn_ix_xa, &fndn_ix);
-
-   if (ML_(cur_is_valid)(ui->compdir))
-      dirname = ML_(addStrFromCursor)(di, ui->compdir);
-   else
-      dirname = ML_(addStr)(di, ".", -1);
-   VG_(addToXA) (dirname_xa, &dirname);
-
    info.li_length = step_initial_length_field( &external, &is64 );
    if (di->ddump_line)
       VG_(printf)("  Length:                      %llu\n", 
@@ -404,11 +513,17 @@ void read_dwarf2_lineblock ( struct _DebugInfo* di,
       VG_(printf)("  DWARF Version:               %d\n", 
                   (Int)info.li_version);
 
-   if (info.li_version != 2 && info.li_version != 3 && info.li_version != 4) {
+   if (info.li_version != 2 && info.li_version != 3 && info.li_version != 4
+       && info.li_version != 5) {
       ML_(symerr)(di, True,
-                  "Only DWARF version 2, 3 and 4 line info "
+                  "Only DWARF version 2, 3, 4 and 5 line info "
                   "is currently supported.");
       goto out;
+   }
+
+   if (info.li_version >= 5) {
+      /* UChar addr_size = */ ML_(cur_step_UChar)(&external);
+      /* UChar seg_size = */  ML_(cur_step_UChar)(&external);
    }
 
    info.li_header_length = is64 ? ML_(cur_step_ULong)(&external) 
@@ -487,10 +602,22 @@ void read_dwarf2_lineblock ( struct _DebugInfo* di,
    /* skip over "standard_opcode_lengths" */
    data = ML_(cur_plus)(standard_opcodes, info.li_opcode_base - 1);
 
+   if (ML_(cur_is_valid)(ui->compdir))
+      dirname = ML_(addStrFromCursor)(di, ui->compdir);
+   else
+      dirname = ML_(addStr)(di, ".", -1);
+
+   if (info.li_version < 5) {
    /* Read the contents of the Directory table.  */
    if (di->ddump_line)
       VG_(printf)(" The Directory Table%s\n", 
                   ML_(cur_read_UChar)(data) == 0 ? " is empty." : ":" );
+
+      /* DWARF2 starts numbering filename entries at 1, so we need to
+         add a dummy zeroth entry to the table.  */
+      fndn_ix = 0; // 0 is the "null" index in a fixed pool.
+      VG_(addToXA) (fndn_ix_xa, &fndn_ix);
+      VG_(addToXA) (dirname_xa, &dirname);
 
    while (ML_(cur_read_UChar)(data) != 0) {
 
@@ -508,7 +635,8 @@ void read_dwarf2_lineblock ( struct _DebugInfo* di,
           /* actually got something sensible for compdir */
           && ML_(cur_strlen)(ui->compdir))
       {
-         HChar* compdir_str = ML_(cur_read_strdup)(ui->compdir, "di.rd2l.1b");
+            HChar* compdir_str = ML_(cur_read_strdup)(ui->compdir,
+                                                      "di.rd2l.1b");
          SizeT  len = VG_(strlen)(compdir_str) + 1 + VG_(strlen)(data_str);
          HChar *buf = ML_(dinfo_zalloc)("di.rd2l.1c", len + 1);
 
@@ -541,6 +669,74 @@ void read_dwarf2_lineblock ( struct _DebugInfo* di,
       goto out;
    }
    data = ML_(cur_plus)(data, 1);
+   } else {
+      UInt directories_count;
+      UChar directory_entry_format_count = ML_(cur_step_UChar)(&data);
+      UInt n;
+      for (n = 0; n < directory_entry_format_count; n++) {
+         UInt lnct = step_leb128U(&data);
+         UInt form = step_leb128U(&data);
+         if (lnct == DW_LNCT_path)
+            p_ndx = n;
+         forms[n] = form;
+      }
+      directories_count = step_leb128U(&data);
+      /* Read the contents of the Directory table.  */
+      if (di->ddump_line)
+         VG_(printf)(" The Directory Table%s\n",
+                     directories_count == 0 ? " is empty." : ":" );
+
+      for (n = 0; n < directories_count; n++) {
+         UInt f;
+         for (f = 0; f < directory_entry_format_count; f++) {
+            UInt form = forms[f];
+            if (f == p_ndx) {
+               HChar *data_str = get_line_str (di, ui, &data, form,
+                                               debugstr_img,
+                                               debuglinestr_img);
+               if (di->ddump_line)
+                  VG_(printf)("  %s\n", data_str);
+
+               /* If data[0] is '/', then 'data' is an absolute path and we
+                  don't mess with it.  Otherwise, construct the
+                  path 'ui->compdir' ++ "/" ++ 'data'. */
+
+               if (data_str[0] != '/'
+                   /* not an absolute path */
+                   && ML_(cur_is_valid)(ui->compdir)
+                   /* actually got something sensible for compdir */
+                   && ML_(cur_strlen)(ui->compdir))
+               {
+                  HChar* compdir_str = ML_(cur_read_strdup)(ui->compdir,
+                                                            "di.rd2l.1b");
+                  SizeT  len = VG_(strlen)(compdir_str) + 1
+                     + VG_(strlen)(data_str);
+                  HChar *buf = ML_(dinfo_zalloc)("di.rd2l.1c", len + 1);
+
+                  VG_(strcpy)(buf, compdir_str);
+                  VG_(strcat)(buf, "/");
+                  VG_(strcat)(buf, data_str);
+
+                  dirname = ML_(addStr)(di, buf, len);
+                  VG_(addToXA) (dirname_xa, &dirname);
+                  if (0) VG_(printf)("rel path  %s\n", buf);
+                  ML_(dinfo_free)(compdir_str);
+                  ML_(dinfo_free)(buf);
+               } else {
+                  /* just use 'data'. */
+                  dirname = ML_(addStr)(di,data_str,-1);
+                  VG_(addToXA) (dirname_xa, &dirname);
+                  if (0) VG_(printf)("abs path  %s\n", data_str);
+               }
+
+               ML_(dinfo_free)(data_str);
+
+            } else {
+               data = skip_line_form (di, ui, data, form);
+            }
+         }
+      }
+   }
 
    /* Read the contents of the File Name table.  This produces a bunch
       of fndn_ix in fndn_ix_xa. */
@@ -549,6 +745,7 @@ void read_dwarf2_lineblock ( struct _DebugInfo* di,
       VG_(printf)("  Entry	Dir	Time	Size	Name\n");
    }
 
+   if (info.li_version < 5) {
    i = 1;
    while (ML_(cur_read_UChar)(data) != 0) {
       HChar* name    = ML_(cur_step_strdup)(&data, "di.rd2l.2");
@@ -576,6 +773,48 @@ void read_dwarf2_lineblock ( struct _DebugInfo* di,
       goto out;
    }
    data = ML_(cur_plus)(data, 1);
+   } else {
+      UInt file_names_count;
+      UChar file_names_entry_format_count = ML_(cur_step_UChar)(&data);
+      UInt n;
+      for (n = 0; n < file_names_entry_format_count; n++) {
+         UInt lnct = step_leb128U(&data);
+         UInt form = step_leb128U(&data);
+         if (lnct == DW_LNCT_path)
+            p_ndx = n;
+         if (lnct == DW_LNCT_directory_index)
+            d_ndx = n;
+         forms[n] = form;
+      }
+      file_names_count = step_leb128U(&data);
+      for (n = 0; n < file_names_count; n++) {
+         UInt f;
+         HChar* name = NULL;
+         Int diridx  = 0;
+         for (f = 0; f < file_names_entry_format_count; f++) {
+            UInt form = forms[f];
+            if (f == p_ndx)
+               name = get_line_str (di, ui, &data, form,
+                                    debugstr_img, debuglinestr_img);
+            else if (f == d_ndx)
+               diridx = get_line_ndx (di, &data, form);
+            else
+               data = skip_line_form (di, ui, data, form);
+         }
+
+         dirname = safe_dirname_ix( dirname_xa, diridx );
+         fndn_ix = ML_(addFnDn) (di, name, dirname);
+         VG_(addToXA) (fndn_ix_xa, &fndn_ix);
+         if (0) VG_(printf)("file %s diridx %d\n", name, diridx );
+         if (di->ddump_line)
+            VG_(printf)("  %u\t%d\t%d\t%d\t%s\n",
+                        n, diridx, 0, 0, name);
+         ML_(dinfo_free)(name);
+      }
+
+      if (di->ddump_line)
+         VG_(printf)("\n");
+   }
 
    if (di->ddump_line)
       VG_(printf)(" Line Number Statements:\n");
@@ -774,9 +1013,12 @@ static DiCursor lookup_abbrev( DiCursor p, ULong acode )
       (void)step_leb128U(&p);  /* skip tag */
       p = ML_(cur_plus)(p,1);  /* skip has_children flag */
       ULong name;
+      ULong form;
       do {
          name = step_leb128U(&p); /* name */
-         (void)step_leb128U(&p);  /* form */
+         form = step_leb128U(&p);  /* form */
+         if (form == 0x21) /* DW_FORM_implicit_const */
+            step_leb128S(&p);
       }
       while (name != 0); /* until name == form == 0 */
    }
@@ -806,13 +1048,15 @@ void read_unitinfo_dwarf2( /*OUT*/UnitInfo* ui,
                                   DiCursor  unitblock_img,
                                   DiCursor  debugabbrev_img,
                                   DiCursor  debugstr_img,
-                                  DiCursor  debugstr_alt_img )
+                                  DiCursor  debugstr_alt_img,
+                                  DiCursor  debuglinestr_img)
 {
    UInt   acode, abcode;
    ULong  atoffs, blklen;
    UShort ver;
 
-   UChar    addr_size;
+   UChar    addr_size = 0;
+   UChar    unit_type = 0;
    DiCursor p = unitblock_img;
    DiCursor end_img;
    DiCursor abbrev_img;
@@ -825,15 +1069,46 @@ void read_unitinfo_dwarf2( /*OUT*/UnitInfo* ui,
    /* This block length */
    blklen = step_initial_length_field( &p, &ui->dw64 );
 
-   /* version should be 2, 3 or 4 */
+   /* version should be 2, 3, 4 or 5 */
    ver = ML_(cur_step_UShort)(&p);
 
+   if (ver >= 5)
+      /* unit_type for DWARF5 */
+      unit_type = ML_(cur_step_UChar)(&p);
+   else
    /* get offset in abbrev */
    atoffs = ui->dw64 ? ML_(cur_step_ULong)(&p)
                      : (ULong)(ML_(cur_step_UInt)(&p));
 
    /* Address size */
    addr_size = ML_(cur_step_UChar)(&p);
+
+   if (ver >= 5) {
+      /* get offset in abbrev */
+      atoffs = ui->dw64 ? ML_(cur_step_ULong)(&p)
+                        : (ULong)(ML_(cur_step_UInt)(&p));
+
+      /* read any extra fields */
+      switch(unit_type) {
+         case DW_UT_compile:
+         case DW_UT_partial:
+            break;
+         case DW_UT_skeleton:
+         case DW_UT_split_compile:
+            /* dwo_id = */ ML_(cur_step_ULong)(&p);
+            break;
+         case DW_UT_type:
+         case DW_UT_split_type:
+            /* type_signature = */ ML_(cur_step_ULong)(&p);
+            /* type_offset = */ ui->dw64 ? ML_(cur_step_ULong)(&p)
+                                         : (ULong)(ML_(cur_step_UInt)(&p));
+            break;
+         default:
+            VG_(printf)( "### unhandled dwarf2 unit_type code 0x%x\n",
+                         unit_type );
+            break;
+      }
+   }
 
    /* End of this block */
    end_img = ML_(cur_plus)(unitblock_img, blklen + (ui->dw64 ? 12 : 4)); 
@@ -861,7 +1136,8 @@ void read_unitinfo_dwarf2( /*OUT*/UnitInfo* ui,
 
       tag = step_leb128U( &abbrev_img );
 
-      if ( tag != 0x0011 /*TAG_compile_unit*/ )
+      if ( tag != 0x0011 /*TAG_compile_unit*/
+           && tag != 0x004a /*TAG_skeleton_unit*/ )
          return; /* Not a compile unit (might be partial) or broken DWARF. */
 
       /* DW_CHILDREN_yes or DW_CHILDREN_no */
@@ -911,6 +1187,17 @@ void read_unitinfo_dwarf2( /*OUT*/UnitInfo* ui,
                   sval = ML_(cur_plus)(debugstr_img, ML_(cur_read_ULong)(p));
                p = ML_(cur_plus)(p, ui->dw64 ? 8 : 4);
                break;
+            case 0x1f: /* FORM_line_strp */ /* pointer in .debug_line_str */
+               /* 2006-01-01: only generate a value if a debug_str
+                  section was found) */
+               if (ML_(cur_is_valid)(debuglinestr_img) && !ui->dw64)
+                  sval = ML_(cur_plus)(debuglinestr_img,
+                                       ML_(cur_read_UInt)(p));
+               if (ML_(cur_is_valid)(debuglinestr_img) && ui->dw64)
+                  sval = ML_(cur_plus)(debuglinestr_img,
+                                       ML_(cur_read_ULong)(p));
+               p = ML_(cur_plus)(p, ui->dw64 ? 8 : 4);
+               break;
             case 0x08: /* FORM_string */
                sval = p;
                p = ML_(cur_plus)(p, ML_(cur_strlen)(p) + 1);
@@ -930,7 +1217,13 @@ void read_unitinfo_dwarf2( /*OUT*/UnitInfo* ui,
                p = ML_(cur_plus)(p, 8);
                /* perhaps should assign unconditionally to cval? */
                break;
+            case 0x21: /* FORM_implicit_const */
+               cval = step_leb128S (&abbrev_img);
+               break;
             /* TODO : Following ones just skip data - implement if you need */
+            case 0x1e: /* FORM_data16 */
+               p = ML_(cur_plus)(p, 16);
+               break;
             case 0x01: /* FORM_addr */
                p = ML_(cur_plus)(p, addr_size);
                break;
@@ -979,8 +1272,44 @@ void read_unitinfo_dwarf2( /*OUT*/UnitInfo* ui,
                break;
             case 0x19: /* FORM_flag_present */
                break;
+            case 0x1a: /* FORM_strx */
+               (void)step_leb128U(&p);
+               break;
+            case 0x1b: /* FORM_addrx */
+               (void)step_leb128U(&p);
+               break;
             case 0x20: /* FORM_ref_sig8 */
                p = ML_(cur_plus)(p, 8);
+               break;
+            case 0x22: /* FORM_loclistx */
+               (void)step_leb128U(&p);
+               break;
+            case 0x23: /* FORM_rnglistx */
+               (void)step_leb128U(&p);
+               break;
+            case 0x25: /* FORM_strx1 */
+               p = ML_(cur_plus)(p, 1);
+               break;
+            case 0x26: /* FORM_strx2 */
+               p = ML_(cur_plus)(p, 2);
+               break;
+            case 0x27: /* FORM_strx3 */
+               p = ML_(cur_plus)(p, 3);
+               break;
+            case 0x28: /* FORM_strx4 */
+               p = ML_(cur_plus)(p, 4);
+               break;
+            case 0x29: /* FORM_addrx1 */
+               p = ML_(cur_plus)(p, 1);
+               break;
+            case 0x2a: /* FORM_addrx2 */
+               p = ML_(cur_plus)(p, 2);
+               break;
+            case 0x2b: /* FORM_addrx3 */
+               p = ML_(cur_plus)(p, 3);
+               break;
+            case 0x2c: /* FORM_addrx4 */
+               p = ML_(cur_plus)(p, 4);
                break;
             case 0x1f20: /* FORM_GNU_ref_alt */
                p = ML_(cur_plus)(p, ui->dw64 ? 8 : 4);
@@ -1002,7 +1331,8 @@ void read_unitinfo_dwarf2( /*OUT*/UnitInfo* ui,
          }
          
          /* Now store the members we need in the UnitInfo structure */
-         if ( tag == 0x0011 /*TAG_compile_unit*/ ) {
+         if ( tag == 0x0011 /*TAG_compile_unit*/
+              || tag == 0x004a /*TAG_skeleton_unit*/ ) {
                  if ( name == 0x03 ) ui->name = sval;      /* DW_AT_name */
             else if ( name == 0x1b ) ui->compdir = sval;   /* DW_AT_compdir */
             else if ( name == 0x10 ) ui->stmt_list = cval; /* DW_AT_stmt_list */
@@ -1030,7 +1360,8 @@ void ML_(read_debuginfo_dwarf3)
           DiSlice escn_debug_abbv,      /* .debug_abbrev */
           DiSlice escn_debug_line,      /* .debug_line */
           DiSlice escn_debug_str,       /* .debug_str */
-          DiSlice escn_debug_str_alt )  /* .debug_str */
+          DiSlice escn_debug_str_alt,   /* .debug_str */
+          DiSlice escn_debug_line_str)  /* .debug_line_str */
 {
    UnitInfo ui;
    UShort   ver;
@@ -1069,9 +1400,9 @@ void ML_(read_debuginfo_dwarf3)
 
       /* version should be 2 */
       ver = ML_(cur_read_UShort)( ML_(cur_plus)(block_img, blklen_len) );
-      if ( ver != 2 && ver != 3 && ver != 4 ) {
+      if ( ver != 2 && ver != 3 && ver != 4 && ver != 5) {
          ML_(symerr)( di, True,
-                      "Ignoring non-Dwarf2/3/4 block in .debug_info" );
+                      "Ignoring non-Dwarf2/3/4/5 block in .debug_info" );
          continue;
       }
       
@@ -1084,7 +1415,8 @@ void ML_(read_debuginfo_dwarf3)
       read_unitinfo_dwarf2( &ui, block_img, 
                                  ML_(cur_from_sli)(escn_debug_abbv),
                                  ML_(cur_from_sli)(escn_debug_str),
-                                 ML_(cur_from_sli)(escn_debug_str_alt) );
+                                 ML_(cur_from_sli)(escn_debug_str_alt),
+                                 ML_(cur_from_sli)(escn_debug_line_str));
       if (0) {
          HChar* str_name    = ML_(cur_read_strdup)(ui.name,    "di.rdd3.1");
          HChar* str_compdir = ML_(cur_read_strdup)(ui.compdir, "di.rdd3.2");
@@ -1109,7 +1441,9 @@ void ML_(read_debuginfo_dwarf3)
       read_dwarf2_lineblock(
          di, &ui,
          ML_(cur_plus)(ML_(cur_from_sli)(escn_debug_line), ui.stmt_list),
-         escn_debug_line.szB  - ui.stmt_list
+         escn_debug_line.szB  - ui.stmt_list,
+         ML_(cur_from_sli)(escn_debug_str),
+         ML_(cur_from_sli)(escn_debug_line_str)
       );
    }
 }
@@ -1688,11 +2022,11 @@ void ML_(read_debuginfo_dwarf1) (
 
 /* --------------- Decls --------------- */
 
-#if defined(VGP_x86_linux) || defined(VGP_x86_solaris) || defined(VGP_x86_dragonfly)
+#if defined(VGP_x86_linux) || defined(VGP_x86_solaris) || defined(VGP_x86_freebsd)|| defined(VGP_x86_dragonfly)
 #  define FP_REG         5
 #  define SP_REG         4
 #  define RA_REG_DEFAULT 8
-#elif defined(VGP_amd64_linux) || defined(VGP_amd64_solaris) || defined(VGP_amd64_dragonfly)
+#elif defined(VGP_amd64_linux) || defined(VGP_amd64_solaris) || defined(VGP_amd64_freebsd)|| defined(VGP_amd64_dragonfly)
 #  define FP_REG         6
 #  define SP_REG         7
 #  define RA_REG_DEFAULT 16
@@ -1708,7 +2042,7 @@ void ML_(read_debuginfo_dwarf1) (
 #  define FP_REG         12
 #  define SP_REG         13
 #  define RA_REG_DEFAULT 14
-#elif defined(VGP_arm64_linux)
+#elif defined(VGP_arm64_linux) || defined(VGP_arm64_freebsd)
 #  define FP_REG         29
 #  define SP_REG         31
 #  define RA_REG_DEFAULT 30
@@ -1724,7 +2058,7 @@ void ML_(read_debuginfo_dwarf1) (
 #  define FP_REG         11    // sometimes s390 has a frame pointer in r11
 #  define SP_REG         15    // stack is always r15
 #  define RA_REG_DEFAULT 14    // the return address is in r14
-#elif defined(VGP_mips32_linux)
+#elif defined(VGP_mips32_linux) || defined(VGP_nanomips_linux)
 #  define FP_REG         30
 #  define SP_REG         29
 #  define RA_REG_DEFAULT 31
@@ -1732,6 +2066,10 @@ void ML_(read_debuginfo_dwarf1) (
 #  define FP_REG         30
 #  define SP_REG         29
 #  define RA_REG_DEFAULT 31
+#elif defined(VGP_riscv64_linux)
+#  define FP_REG         8
+#  define SP_REG         2
+#  define RA_REG_DEFAULT 1
 #else
 #  error "Unknown platform"
 #endif
@@ -1742,11 +2080,15 @@ void ML_(read_debuginfo_dwarf1) (
    might exist, for Neon/VFP-v3. */
 #if defined(VGP_ppc32_linux) || defined(VGP_ppc64be_linux) \
      || defined(VGP_ppc64le_linux) || defined(VGP_mips32_linux) \
-     || defined(VGP_mips64_linux)
+     || defined(VGP_nanomips_linux) || defined(VGP_mips64_linux)
 # define N_CFI_REGS 72
 #elif defined(VGP_arm_linux)
 # define N_CFI_REGS 320
-#elif defined(VGP_arm64_linux)
+#elif defined(VGP_arm64_linux) || defined(VGP_arm64_freebsd)
+# define N_CFI_REGS 128
+#elif defined(VGP_s390x_linux)
+# define N_CFI_REGS 66
+#elif defined(VGP_riscv64_linux)
 # define N_CFI_REGS 128
 #else
 # define N_CFI_REGS 20
@@ -1842,7 +2184,6 @@ enum dwarf_cfa_secondary_ops
            | RR_Reg       arg  -- is in register 'arg' 
            | RR_Expr      arg  -- is at * [[ arg ]]
            | RR_ValExpr   arg  -- is [[ arg ]]
-           | RR_Arch           -- dunno
 
    Note that RR_Expr is redundant since the same can be represented
    using RR_ValExpr with an explicit dereference (CfiExpr_Deref) at
@@ -1856,7 +2197,7 @@ enum dwarf_cfa_secondary_ops
 typedef
    struct {
       enum { RR_Undef, RR_Same, RR_CFAOff, RR_CFAValOff, 
-             RR_Reg, /*RR_Expr,*/ RR_ValExpr, RR_Arch } tag;
+             RR_Reg, /*RR_Expr,*/ RR_ValExpr } tag;
       /* meaning:  int offset for CFAoff/CFAValOff
                    reg # for Reg
                    expr index for Expr/ValExpr */
@@ -1872,12 +2213,11 @@ static void ppRegRule ( const XArray* exprs, const RegRule* rrule )
       case RR_Same:      VG_(printf)("s  "); break;
       case RR_CFAOff:    VG_(printf)("c%d ", rrule->arg); break;
       case RR_CFAValOff: VG_(printf)("v%d ", rrule->arg); break;
-      case RR_Reg:       VG_(printf)("r%d ", rrule->arg); break;
+      case RR_Reg:       VG_(printf)("dwReg%d ", rrule->arg); break;
       case RR_ValExpr:   VG_(printf)("ve{"); 
                          ML_(ppCfiExpr)( exprs, rrule->arg ); 
                          VG_(printf)("} "); 
                          break;
-      case RR_Arch:      VG_(printf)("a  "); break;
       default:           VG_(core_panic)("ppRegRule");
    }
 }
@@ -1976,6 +2316,10 @@ static void initUnwindContext ( /*OUT*/UnwindContext* ctx )
          start out as RR_Same. */
       ctx->state[j].reg[29/*FP*/].tag = RR_Same;
       ctx->state[j].reg[30/*LR*/].tag = RR_Same;
+#     elif defined(VGA_riscv64)
+      /* Registers fp and ra start out implicitly as RR_Same. */
+      ctx->state[j].reg[FP_REG].tag = RR_Same;
+      ctx->state[j].reg[RA_REG_DEFAULT].tag = RR_Same;
 #     endif
    }
 }
@@ -2022,6 +2366,11 @@ static Bool summarise_context(/*OUT*/Addr* base,
    *len = 0;
    VG_(bzero_inline)(si_m, sizeof(*si_m));
 
+#  if defined(VGP_s390x_linux)
+   #define is_s390x_linux True
+#  else
+   #define is_s390x_linux False
+#  endif
 
    /* Guard against obviously stupid settings of the reg-rule stack
       pointer. */
@@ -2054,7 +2403,8 @@ static Bool summarise_context(/*OUT*/Addr* base,
    if (ctxs->cfa_is_regoff && ctxs->cfa_reg == SP_REG) {
       si_m->cfa_off = ctxs->cfa_off;
 #     if defined(VGA_x86) || defined(VGA_amd64) || defined(VGA_s390x) \
-         || defined(VGA_mips32) || defined(VGA_mips64)
+         || defined(VGA_mips32) || defined(VGA_nanomips) \
+         || defined(VGA_mips64) || defined(VGA_riscv64)
       si_m->cfa_how = CFIC_IA_SPREL;
 #     elif defined(VGA_arm)
       si_m->cfa_how = CFIC_ARM_R13REL;
@@ -2068,7 +2418,8 @@ static Bool summarise_context(/*OUT*/Addr* base,
    if (ctxs->cfa_is_regoff && ctxs->cfa_reg == FP_REG) {
       si_m->cfa_off = ctxs->cfa_off;
 #     if defined(VGA_x86) || defined(VGA_amd64) || defined(VGA_s390x) \
-         || defined(VGA_mips32) || defined(VGA_mips64)
+         || defined(VGA_mips32) || defined(VGA_nanomips) \
+         || defined(VGA_mips64) || defined(VGA_riscv64)
       si_m->cfa_how = CFIC_IA_BPREL;
 #     elif defined(VGA_arm)
       si_m->cfa_how = CFIC_ARM_R12REL;
@@ -2098,6 +2449,8 @@ static Bool summarise_context(/*OUT*/Addr* base,
    }
 
 #  define SUMMARISE_HOW(_how, _off, _ctxreg)                  \
+   _how = CFIR_UNKNOWN; /* install safe initial values */     \
+   _off = 0;                                                  \
    switch (_ctxreg.tag) {                                     \
       case RR_Undef:                                          \
          _how = CFIR_UNKNOWN;   _off = 0; break;              \
@@ -2129,6 +2482,51 @@ static Bool summarise_context(/*OUT*/Addr* base,
             ML_(ppCfiExpr)(dst, conv);                        \
          break;                                               \
       }                                                       \
+      case RR_Reg:                                            \
+         if (is_s390x_linux) {                                \
+            if (_ctxreg.arg == 16/*dwarf reg 16 is %f0*/) {   \
+               _how = CFIR_S390X_F0;                          \
+               _off = 0;                                      \
+               break;                                         \
+            }                                                 \
+            else if (_ctxreg.arg == 17/*dwarf reg 17 is %f2*/) { \
+               _how = CFIR_S390X_F2;                          \
+               _off = 0;                                      \
+               break;                                         \
+            }                                                 \
+            else if (_ctxreg.arg == 18/*dwarf reg 18 is %f4*/) { \
+               _how = CFIR_S390X_F4;                          \
+               _off = 0;                                      \
+               break;                                         \
+            }                                                 \
+            else if (_ctxreg.arg == 19/*dwarf reg 19 is %f6*/) { \
+               _how = CFIR_S390X_F6;                          \
+               _off = 0;                                      \
+               break;                                         \
+            }                                                 \
+            else if (_ctxreg.arg == 20/*dwarf reg 20 is %f1*/) { \
+               _how = CFIR_S390X_F1;                          \
+               _off = 0;                                      \
+               break;                                         \
+            }                                                 \
+            else if (_ctxreg.arg == 21/*dwarf reg 21 is %f3*/) { \
+               _how = CFIR_S390X_F3;                          \
+               _off = 0;                                      \
+               break;                                         \
+            }                                                 \
+            else if (_ctxreg.arg == 22/*dwarf reg 22 is %f5*/) { \
+               _how = CFIR_S390X_F5;                          \
+               _off = 0;                                      \
+               break;                                         \
+            }                                                 \
+            else if (_ctxreg.arg == 23/*dwarf reg 23 is %f7*/) { \
+               _how = CFIR_S390X_F7;                          \
+               _off = 0;                                      \
+               break;                                         \
+            }                                                 \
+         }                                                    \
+         /* Currently we only support RR_Reg for s390. */     \
+         why = 2; goto failed;                                \
       default:                                                \
          why = 2; goto failed; /* otherwise give up */        \
    }
@@ -2276,6 +2674,22 @@ static Bool summarise_context(/*OUT*/Addr* base,
                                ctxs->reg[FP_REG] );
    SUMMARISE_HOW(si_m->sp_how, si_m->sp_off,
                                ctxs->reg[SP_REG] );
+   SUMMARISE_HOW(si_m->f0_how, si_m->f0_off,
+                               ctxs->reg[16/*%f0*/]);
+   SUMMARISE_HOW(si_m->f2_how, si_m->f2_off,
+                               ctxs->reg[17/*%f2*/]);
+   SUMMARISE_HOW(si_m->f4_how, si_m->f4_off,
+                               ctxs->reg[18/*%f4*/]);
+   SUMMARISE_HOW(si_m->f6_how, si_m->f6_off,
+                               ctxs->reg[19/*%f6*/]);
+   SUMMARISE_HOW(si_m->f1_how, si_m->f1_off,
+                               ctxs->reg[20/*%f1*/]);
+   SUMMARISE_HOW(si_m->f3_how, si_m->f3_off,
+                               ctxs->reg[21/*%f3*/]);
+   SUMMARISE_HOW(si_m->f5_how, si_m->f5_off,
+                               ctxs->reg[22/*%f5*/]);
+   SUMMARISE_HOW(si_m->f7_how, si_m->f7_off,
+                               ctxs->reg[23/*%f7*/]);
 
    /* change some defaults to consumable values */
    if (si_m->sp_how == CFIR_UNKNOWN)
@@ -2288,6 +2702,7 @@ static Bool summarise_context(/*OUT*/Addr* base,
       si_m->cfa_how = CFIC_IA_SPREL;
       si_m->cfa_off = 160;
    }
+
    if (si_m->ra_how == CFIR_UNKNOWN) {
       if (!debuginfo->cfsi_exprs)
          debuginfo->cfsi_exprs = VG_(newXA)( ML_(dinfo_zalloc),
@@ -2298,6 +2713,30 @@ static Bool summarise_context(/*OUT*/Addr* base,
       si_m->ra_off = ML_(CfiExpr_CfiReg)( debuginfo->cfsi_exprs,
                                           Creg_S390_LR);
    }
+
+   if (si_m->f0_how == CFIR_UNKNOWN)
+      si_m->f0_how = CFIR_SAME;
+
+   if (si_m->f1_how == CFIR_UNKNOWN)
+      si_m->f1_how = CFIR_SAME;
+
+   if (si_m->f2_how == CFIR_UNKNOWN)
+      si_m->f2_how = CFIR_SAME;
+
+   if (si_m->f3_how == CFIR_UNKNOWN)
+      si_m->f3_how = CFIR_SAME;
+
+   if (si_m->f4_how == CFIR_UNKNOWN)
+      si_m->f4_how = CFIR_SAME;
+
+   if (si_m->f5_how == CFIR_UNKNOWN)
+      si_m->f5_how = CFIR_SAME;
+
+   if (si_m->f6_how == CFIR_UNKNOWN)
+      si_m->f6_how = CFIR_SAME;
+
+   if (si_m->f7_how == CFIR_UNKNOWN)
+      si_m->f7_how = CFIR_SAME;
 
    /* knock out some obviously stupid cases */
    if (si_m->ra_how == CFIR_SAME)
@@ -2315,7 +2754,7 @@ static Bool summarise_context(/*OUT*/Addr* base,
 
    return True;
 
-#  elif defined(VGA_mips32) || defined(VGA_mips64)
+#  elif defined(VGA_mips32) || defined(VGA_mips64) || defined(VGA_nanomips)
 
    /* --- entire tail of this fn specialised for mips --- */
 
@@ -2359,6 +2798,30 @@ static Bool summarise_context(/*OUT*/Addr* base,
    return True;
 #  elif defined(VGA_ppc32) || defined(VGA_ppc64be) || defined(VGA_ppc64le)
    /* These don't use CFI based unwinding (is that really true?) */
+
+#  elif defined(VGA_riscv64)
+
+   /* --- entire tail of this fn specialised for riscv64 --- */
+
+   SUMMARISE_HOW(si_m->ra_how, si_m->ra_off, ctxs->reg[ctx->ra_reg]);
+   SUMMARISE_HOW(si_m->fp_how, si_m->fp_off, ctxs->reg[FP_REG]);
+
+   /* on riscv64, it seems the old sp value before the call is always
+      the same as the CFA.  Therefore ... */
+   si_m->sp_how = CFIR_CFAREL;
+   si_m->sp_off = 0;
+
+   /* bogus looking range?  Note, we require that the difference is
+      representable in 32 bits. */
+   if (loc_start >= ctx->loc)
+      { why = 4; goto failed; }
+   if (ctx->loc - loc_start > 10000000 /* let's say */)
+      { why = 5; goto failed; }
+
+   *base = loc_start + ctx->initloc;
+   *len  = (UInt)(ctx->loc - loc_start);
+
+   return True;
 
 #  else
 #    error "Unknown arch"
@@ -2442,7 +2905,8 @@ static Int copy_convert_CfiExpr_tree ( XArray*        dstxa,
             return ML_(CfiExpr_CfiReg)( dstxa, Creg_S390_FP );
          if (dwreg == srcuc->ra_reg)
             return ML_(CfiExpr_CfiReg)( dstxa, Creg_S390_IA );
-#        elif defined(VGA_mips32) || defined(VGA_mips64)
+#        elif defined(VGA_mips32) || defined(VGA_mips64) \
+           || defined(VGA_nanomips)
          if (dwreg == SP_REG)
             return ML_(CfiExpr_CfiReg)( dstxa, Creg_IA_SP );
          if (dwreg == FP_REG)
@@ -2450,9 +2914,14 @@ static Int copy_convert_CfiExpr_tree ( XArray*        dstxa,
          if (dwreg == srcuc->ra_reg)
             return ML_(CfiExpr_CfiReg)( dstxa, Creg_IA_IP );
 #        elif defined(VGA_arm64)
-         I_die_here;
+         if (dwreg == SP_REG)
+            return ML_(CfiExpr_CfiReg)( dstxa, Creg_ARM64_SP );
+         if (dwreg == FP_REG)
+            return ML_(CfiExpr_CfiReg)( dstxa, Creg_ARM64_X29 );
+         if (dwreg == srcuc->ra_reg)
+            return ML_(CfiExpr_CfiReg)( dstxa, Creg_ARM64_X30 );
 #        elif defined(VGA_ppc32) || defined(VGA_ppc64be) \
-            || defined(VGA_ppc64le)
+            || defined(VGA_ppc64le) || defined(VGA_riscv64)
 #        else
 #           error "Unknown arch"
 #        endif
@@ -2733,6 +3202,20 @@ static Int dwarfexpr_to_dag ( const UnwindContext* ctx,
                VG_(printf)("DW_OP_breg%d: %ld", reg, sw);
             break;
 
+         case DW_OP_bregx:
+            /* push: reg + sleb128 */
+            reg = (Int)step_leb128U( &expr );
+            sw = step_leb128S( &expr );
+            ix = ML_(CfiExpr_Binop)( dst,
+                    Cbinop_Add,
+                    ML_(CfiExpr_DwReg)( dst, reg ),
+                    ML_(CfiExpr_Const)( dst, (UWord)sw )
+                 );
+            PUSH(ix);
+            if (ddump_frames)
+               VG_(printf)("DW_OP_bregx: %d %ld", reg, sw);
+            break;
+
          case DW_OP_reg0 ... DW_OP_reg31:
             /* push: reg */
             reg = (Int)opcode - (Int)DW_OP_reg0;
@@ -2751,6 +3234,21 @@ static Int dwarfexpr_to_dag ( const UnwindContext* ctx,
             PUSH( ML_(CfiExpr_Binop)( dst, Cbinop_Add, ix2, ix ) );
             if (ddump_frames)
                VG_(printf)("DW_OP_plus_uconst: %lu", uw);
+            break;
+
+         case DW_OP_consts:
+            sw = step_leb128S( &expr );
+            PUSH( ML_(CfiExpr_Const)( dst, (UWord)sw ) );
+            if (ddump_frames)
+               VG_(printf)("DW_OP_consts: %ld", sw);
+            break;
+
+         case DW_OP_const8s:
+            /* push: 64-bit signed immediate */
+            sw = step_le_s_encoded_literal( &expr, 8 );
+            PUSH( ML_(CfiExpr_Const)( dst, (UWord)sw ) );
+            if (ddump_frames)
+               VG_(printf)("DW_OP_const8s: %ld", sw);
             break;
 
          case DW_OP_const4s:
@@ -2799,6 +3297,21 @@ static Int dwarfexpr_to_dag ( const UnwindContext* ctx,
             PUSH( ML_(CfiExpr_Const)( dst, uw ) );
             if (ddump_frames)
                VG_(printf)("DW_OP_const4: %lu", uw);
+            break;
+
+         case DW_OP_const8u:
+            /* push: 64-bit unsigned immediate */
+            uw = step_le_u_encoded_literal( &expr, 8 );
+            PUSH( ML_(CfiExpr_Const)( dst, uw ) );
+            if (ddump_frames)
+               VG_(printf)("DW_OP_const8: %lu", uw);
+            break;
+
+         case DW_OP_constu:
+            uw = step_leb128S ( &expr );
+            PUSH( ML_(CfiExpr_Const)( dst, uw ) );
+            if (ddump_frames)
+               VG_(printf)("DW_OP_constu: %lu", uw);
             break;
 
          case DW_OP_abs:
@@ -2863,7 +3376,7 @@ static Int dwarfexpr_to_dag ( const UnwindContext* ctx,
             if (!VG_(clo_xml))
                VG_(message)(Vg_DebugMsg, 
                             "Warning: DWARF2 CFI reader: unhandled DW_OP_ "
-                            "opcode 0x%x\n", (Int)opcode); 
+                            "opcode 0x%x\n", (UInt)opcode);
             return -1;
       }
 
@@ -4151,7 +4664,7 @@ void ML_(read_callframe_info_dwarf3)
     return;
 }
 
-#endif // defined(VGO_linux) || defined(VGO_darwin) || defined(VGO_solaris) || defined(VGO_dragonfly)
+#endif // defined(VGO_linux) || defined(VGO_darwin) || defined(VGO_solaris) || defined(VGO_freebsd)|| defined(VGO_dragonfly)
 
 /*--------------------------------------------------------------------*/
 /*--- end                                                          ---*/

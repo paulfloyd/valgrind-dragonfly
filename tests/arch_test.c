@@ -33,17 +33,21 @@ char* all_archs[] = {
    "s390x",
    "mips32",
    "mips64",
+   "nanomips",
+   "riscv64",
    NULL
 };
 
 static Bool go(char* arch)
 { 
 #if defined(VGP_x86_linux) || defined(VGP_x86_darwin) \
-   || defined(VGP_x86_solaris) || defined(VGP_x86_dragonfly)
+   || defined(VGP_x86_solaris) || defined(VGP_x86_freebsd \
+   || defined(VGP_x86_dragonfly)
    if ( 0 == strcmp( arch, "x86"   ) ) return True;
 
 #elif defined(VGP_amd64_linux) || defined(VGP_amd64_darwin) \
-   || defined(VGP_amd64_solaris) || defined(VGP_amd64_dragonfly)
+   || defined(VGP_amd64_solaris) || defined(VGP_amd64_freebsd \
+   || defined(VGP_amd64_dragonfly)
 #if defined(VGA_SEC_x86)
    if ( 0 == strcmp( arch, "x86"   ) ) return True;
 #endif
@@ -67,7 +71,7 @@ static Bool go(char* arch)
 #elif defined(VGP_arm_linux)
    if ( 0 == strcmp( arch, "arm" ) ) return True;
 
-#elif defined(VGP_arm64_linux)
+#elif defined(VGP_arm64_linux) || defined(VGP_arm64_freebsd)
    if ( 0 == strcmp( arch, "arm64" ) ) return True;
 
 #elif defined(VGP_mips32_linux)
@@ -75,6 +79,12 @@ static Bool go(char* arch)
 
 #elif defined(VGP_mips64_linux)
    if ( 0 == strcmp( arch, "mips64" ) ) return True;
+
+#elif defined(VGP_nanomips_linux)
+   if ( 0 == strcmp( arch, "nanomips" ) ) return True;
+
+#elif defined(VGP_riscv64_linux)
+   if ( 0 == strcmp( arch, "riscv64" ) ) return True;
 
 #else
 #  error Unknown platform

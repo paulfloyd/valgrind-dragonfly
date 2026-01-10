@@ -12,7 +12,7 @@
 
    This program is free software; you can redistribute it and/or
    modify it under the terms of the GNU General Public License as
-   published by the Free Software Foundation; either version 2 of the
+   published by the Free Software Foundation; either version 3 of the
    License, or (at your option) any later version.
 
    This program is distributed in the hope that it will be useful, but
@@ -21,9 +21,7 @@
    General Public License for more details.
 
    You should have received a copy of the GNU General Public License
-   along with this program; if not, write to the Free Software
-   Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
-   02111-1307, USA.
+   along with this program; if not, see <http://www.gnu.org/licenses/>.
 
    The GNU General Public License is contained in the file COPYING.
 */
@@ -32,6 +30,7 @@
 #define __PUB_TOOL_SIGNALS_H
 
 #include "pub_tool_basics.h"   // Addr
+#include "pub_tool_hashtable.h" // VgHashTable
 
 // Register an interest in apparently internal faults; used code which
 // wanders around dangerous memory (ie, leakcheck).  The catcher is
@@ -44,6 +43,15 @@
 // the need for this file.
 typedef void (*fault_catcher_t)(Int sig, Addr addr);
 extern fault_catcher_t VG_(set_fault_catcher)(fault_catcher_t catcher);
+
+/* Hash table of PIDs from which SIGCHLD is ignored.  */
+extern VgHashTable *ht_sigchld_ignore;
+
+/* Hash table node where each key represents a PID.  */
+typedef struct _ht_ignore_node {
+   struct _ht_ignore_node *next;
+   UWord   key;
+} ht_ignore_node;
 
 #endif   // __PUB_TOOL_SIGNALS_H
 

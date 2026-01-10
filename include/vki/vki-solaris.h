@@ -12,7 +12,7 @@
 
    This program is free software; you can redistribute it and/or
    modify it under the terms of the GNU General Public License as
-   published by the Free Software Foundation; either version 2 of the
+   published by the Free Software Foundation; either version 3 of the
    License, or (at your option) any later version.
 
    This program is distributed in the hope that it will be useful, but
@@ -21,9 +21,7 @@
    General Public License for more details.
 
    You should have received a copy of the GNU General Public License
-   along with this program; if not, write to the Free Software
-   Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
-   02111-1307, USA.
+   along with this program; if not, see <http://www.gnu.org/licenses/>.
 
    The GNU General Public License is contained in the file COPYING.
 */
@@ -102,6 +100,7 @@ typedef uint32_t vki_u32;
 
 #include <fcntl.h>
 #define VKI_SEEK_SET SEEK_SET
+#define VKI_AT_SYMLINK_NOFOLLOW AT_SYMLINK_NOFOLLOW
 
 
 #include <limits.h>
@@ -664,6 +663,11 @@ typedef struct vki_kcf_door_arg_s {
 #define VKI_MC_HAT_ADVISE MC_HAT_ADVISE
 
 #define vki_meminfo_t meminfo_t
+
+#if defined(HAVE_MREMAP)
+#define VKI_MREMAP_FIXED MREMAP_FIXED
+#define VKI_MREMAP_MAYMOVE MREMAP_MAYMOVE
+#endif /* HAVE_MREMAP */
 
 
 #include <sys/mntio.h>
@@ -1330,6 +1334,7 @@ typedef struct sigaction vki_sigaction_fromK_t;
 
 #include <sys/time.h>
 #define VKI_CLOCK_MONOTONIC CLOCK_MONOTONIC
+#define VKI_CLOCK_THREAD_CPUTIME_ID CLOCK_THREAD_CPUTIME_ID
 
 #define vki_clockid_t clockid_t
 #define vki_timespec timespec
@@ -1383,9 +1388,9 @@ typedef struct sigaction vki_sigaction_fromK_t;
 #define vki_sgttyb sgttyb
 
 
-#include <sys/ucontext.h>
+#include <ucontext.h>
 /* This section also contains items defined in sys/regset.h, this file
-   is directly included in sys/ucontext.h. */
+   is directly included in ucontext.h. */
 #if defined(VGP_x86_solaris)
 #define VKI_SS SS
 #define VKI_UESP UESP

@@ -8,7 +8,7 @@
 #include <string>
 #include <cstring>
 #include <pthread.h>
-#if defined(__DragonFly__)
+#if defined(__FreeBSD__) || defined(__DragonFly__)
 #include <stdio.h>
 #endif
 #include <stdlib.h>

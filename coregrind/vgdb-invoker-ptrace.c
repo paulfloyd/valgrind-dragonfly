@@ -10,7 +10,7 @@
 
    This program is free software; you can redistribute it and/or
    modify it under the terms of the GNU General Public License as
-   published by the Free Software Foundation; either version 2 of the
+   published by the Free Software Foundation; either version 3 of the
    License, or (at your option) any later version.
 
    This program is distributed in the hope that it will be useful, but
@@ -19,9 +19,7 @@
    General Public License for more details.
 
    You should have received a copy of the GNU General Public License
-   along with this program; if not, write to the Free Software
-   Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
-   02111-1307, USA.
+   along with this program; if not, see <http://www.gnu.org/licenses/>.
 
    The GNU General Public License is contained in the file COPYING.
 */
@@ -42,6 +40,17 @@
 #include <sys/user.h>
 #include <sys/wait.h>
 
+#if defined(VGA_riscv64)
+/* Glibc on riscv64 does not provide a definition of user or user_regs_struct
+   in sys/user.h. Instead the definition of user_regs_struct is provided by the
+   kernel in asm/ptrace.h. Pull it and then define the expected user
+   structure. */
+#include <asm/ptrace.h>
+struct user {
+   struct user_regs_struct regs;
+};
+#endif
+
 #ifdef PTRACE_GETREGSET
 // TBD: better have a configure test instead ?
 #define HAVE_PTRACE_GETREGSET
@@ -51,10 +60,10 @@
 // So, better do not use PTRACE_GET/SETREGSET
 // Rather we use PTRACE_GETREGS or PTRACE_PEEKUSER.
 
-// The only platform on which we must use PTRACE_GETREGSET is arm64.
+// The only platform on which we must use PTRACE_GETREGSET is here.
 // The resulting vgdb cannot work in a bi-arch setup.
 // -1 means we will check that PTRACE_GETREGSET works.
-#  if defined(VGA_arm64)
+#  if defined(VGA_arm64) || defined(VGA_riscv64)
 #define USE_PTRACE_GETREGSET
 #  endif
 #endif
@@ -112,20 +121,20 @@ int ptrace_read_memory (pid_t inferior_pid, CORE_ADDR memaddr,
    /* Allocate buffer of that many longwords.  */
    register PTRACE_XFER_TYPE *buffer
       = (PTRACE_XFER_TYPE *) alloca (count * sizeof (PTRACE_XFER_TYPE));
-   
+
    /* Read all the longwords */
    for (i = 0; i < count; i++, addr += sizeof (PTRACE_XFER_TYPE)) {
       errno = 0;
-      buffer[i] = ptrace (PTRACE_PEEKTEXT, inferior_pid, 
+      buffer[i] = ptrace (PTRACE_PEEKTEXT, inferior_pid,
                           (PTRACE_ARG3_TYPE) addr, 0);
       if (errno)
          return errno;
    }
-   
+
    /* Copy appropriate bytes out of the buffer.  */
-   memcpy (myaddr, 
+   memcpy (myaddr,
            (char *) buffer + (memaddr & (sizeof (PTRACE_XFER_TYPE) - 1)), len);
-   
+
    return 0;
 }
 
@@ -135,7 +144,7 @@ int ptrace_read_memory (pid_t inferior_pid, CORE_ADDR memaddr,
    returns the value of errno.  */
 __attribute__((unused)) /* not used on all platforms */
 static
-int ptrace_write_memory (pid_t inferior_pid, CORE_ADDR memaddr, 
+int ptrace_write_memory (pid_t inferior_pid, CORE_ADDR memaddr,
                          const void *myaddr, size_t len)
 {
    register int i;
@@ -143,24 +152,24 @@ int ptrace_write_memory (pid_t inferior_pid, CORE_ADDR memaddr,
    register CORE_ADDR addr = memaddr & -(CORE_ADDR) sizeof (PTRACE_XFER_TYPE);
    /* Round ending address up; get number of longwords that makes.  */
    register int count
-      = (((memaddr + len) - addr) + sizeof (PTRACE_XFER_TYPE) - 1) 
+      = (((memaddr + len) - addr) + sizeof (PTRACE_XFER_TYPE) - 1)
       / sizeof (PTRACE_XFER_TYPE);
    /* Allocate buffer of that many longwords.  */
-   register PTRACE_XFER_TYPE *buffer 
+   register PTRACE_XFER_TYPE *buffer
       = (PTRACE_XFER_TYPE *) alloca (count * sizeof (PTRACE_XFER_TYPE));
-   
+
    if (debuglevel >= 1) {
       DEBUG (1, "Writing ");
       for (i = 0; i < len; i++)
          PDEBUG (1, "%02x", ((const unsigned char*)myaddr)[i]);
       PDEBUG(1, " to %p\n", (void *) memaddr);
    }
-   
+
    /* Fill start and end extra bytes of buffer with existing memory data.  */
-   
+
    buffer[0] = ptrace (PTRACE_PEEKTEXT, inferior_pid,
                        (PTRACE_ARG3_TYPE) addr, 0);
-   
+
    if (count > 1) {
       buffer[count - 1]
          = ptrace (PTRACE_PEEKTEXT, inferior_pid,
@@ -168,22 +177,22 @@ int ptrace_write_memory (pid_t inferior_pid, CORE_ADDR memaddr,
                                        * sizeof (PTRACE_XFER_TYPE)),
                    0);
    }
-   
+
    /* Copy data to be written over corresponding part of buffer */
-   
-   memcpy ((char *) buffer + (memaddr & (sizeof (PTRACE_XFER_TYPE) - 1)), 
+
+   memcpy ((char *) buffer + (memaddr & (sizeof (PTRACE_XFER_TYPE) - 1)),
            myaddr, len);
-   
+
    /* Write the entire buffer.  */
-   
+
    for (i = 0; i < count; i++, addr += sizeof (PTRACE_XFER_TYPE)) {
       errno = 0;
-      ptrace (PTRACE_POKETEXT, inferior_pid, 
+      ptrace (PTRACE_POKETEXT, inferior_pid,
               (PTRACE_ARG3_TYPE) addr, buffer[i]);
       if (errno)
          return errno;
    }
-   
+
    return 0;
 }
 
@@ -211,18 +220,18 @@ HChar* name_of_ThreadStatus ( ThreadStatus status )
   }
 }
 
-static 
+static
 char *status_image (int status)
 {
    static char result[256];  // large enough
    int sz = 0;
 #define APPEND(...) sz += snprintf (result+sz, 256 - sz - 1, __VA_ARGS__)
-  
+
    result[0] = 0;
 
    if (WIFEXITED(status))
       APPEND ("WIFEXITED %d ", WEXITSTATUS(status));
-   
+
    if (WIFSIGNALED(status)) {
       APPEND ("WIFSIGNALED %d ", WTERMSIG(status));
       if (WCOREDUMP(status)) APPEND ("WCOREDUMP ");
@@ -261,15 +270,16 @@ Bool waitstopped (pid_t pid, int signal_expected, const char *msg)
       DEBUG(1, "waitstopped %s before waitpid signal_expected %d\n",
             msg, signal_expected);
       p = waitpid(pid, &status, __WALL);
-      DEBUG(1, "after waitpid pid %d p %d status 0x%x %s\n", pid, p, 
-            status, status_image (status));
+      DEBUG(1, "after waitpid pid %d p %d status 0x%x %s\n", pid, p,
+            (unsigned)status, status_image (status));
       if (p != pid) {
-         ERROR(errno, "%s waitpid pid %d in waitstopped %d status 0x%x %s\n", 
-               msg, pid, p, status, status_image (status));
+         ERROR(errno, "%s waitpid pid %d in waitstopped %d status 0x%x %s\n",
+               msg, pid, p, (unsigned)status, status_image (status));
          return False;
       }
 
-      if (WIFEXITED(status)) {
+      /* The process either exited or was terminated by a (fatal) signal. */
+      if (WIFEXITED(status) || WIFSIGNALED(status)) {
          shutting_down = True;
          return False;
       }
@@ -301,8 +311,12 @@ Bool waitstopped (pid_t pid, int signal_expected, const char *msg)
 
          // realloc a bigger queue, and store new signal at the end.
          // This is not very efficient but we assume not many sigs are queued.
+         if (signal_queue_sz >= 64) {
+            DEBUG(0, "too many queued signals while waiting for SIGSTOP\n");
+            return False;
+         }
          signal_queue_sz++;
-         signal_queue = vrealloc(signal_queue, 
+         signal_queue = vrealloc(signal_queue,
                                  sizeof(siginfo_t) * signal_queue_sz);
          newsiginfo = signal_queue + (signal_queue_sz - 1);
 
@@ -342,7 +356,7 @@ Bool stop (pid_t pid, const char *msg)
       ERROR(errno, "%s SIGSTOP pid %d %ld\n", msg, pid, res);
       return False;
    }
-         
+
    return waitstopped (pid, SIGSTOP, msg);
 
 }
@@ -356,7 +370,7 @@ Bool attach (pid_t pid, const char *msg)
    long res;
    static Bool output_error = True;
    static Bool initial_attach = True;
-   // For a ptrace_scope protected system, we do not want to output 
+   // For a ptrace_scope protected system, we do not want to output
    // repetitively attach error. We will output once an error
    // for the initial_attach. Once the 1st attach has succeeded, we
    // again show all errors.
@@ -377,7 +391,7 @@ Bool attach (pid_t pid, const char *msg)
    return waitstopped(pid, SIGSTOP, msg);
 }
 
-/* once we are attached to the pid, get the list of threads and stop 
+/* once we are attached to the pid, get the list of threads and stop
    them all.
    Returns True if all threads properly suspended, False otherwise. */
 static
@@ -422,7 +436,7 @@ Bool acquire_and_suspend_threads (pid_t pid)
          ERROR(rw, "status ptrace_read_memory\n");
          return False;
       }
-      
+
       rw = ptrace_read_memory(pid, vgt+off_lwpid,
                               &(vgdb_threads[i].lwpid),
                               sizeof(Int));
@@ -430,14 +444,14 @@ Bool acquire_and_suspend_threads (pid_t pid)
          ERROR(rw, "lwpid ptrace_read_memory\n");
          return False;
       }
-      
+
       if (vgdb_threads[i].status != VgTs_Empty) {
          DEBUG(1, "found tid %d status %s lwpid %d\n",
                i, name_of_ThreadStatus(vgdb_threads[i].status),
                vgdb_threads[i].lwpid);
          nr_live_threads++;
          if (vgdb_threads[i].lwpid <= 1) {
-            if (vgdb_threads[i].lwpid == 0 
+            if (vgdb_threads[i].lwpid == 0
                 && vgdb_threads[i].status == VgTs_Init) {
                DEBUG(1, "not set lwpid tid %d status %s lwpid %d\n",
                      i, name_of_ThreadStatus(vgdb_threads[i].status),
@@ -457,7 +471,7 @@ Bool acquire_and_suspend_threads (pid_t pid)
             pid_found = True;
          } else {
             if (!attach(vgdb_threads[i].lwpid, "attach_thread")) {
-                 ERROR(0, "ERROR attach pid %d tid %d\n", 
+                 ERROR(0, "ERROR attach pid %d tid %d\n",
                        vgdb_threads[i].lwpid, i);
                return False;
             }
@@ -485,7 +499,7 @@ void detach_from_all_threads (pid_t pid)
          if (vgdb_threads[i].status == VgTs_Init
              && vgdb_threads[i].lwpid == 0) {
             DEBUG(1, "skipping PTRACE_DETACH pid %d tid %d status %s\n",
-                  vgdb_threads[i].lwpid, i, 
+                  vgdb_threads[i].lwpid, i,
                   name_of_ThreadStatus (vgdb_threads[i].status));
          } else {
             if (vgdb_threads[i].lwpid == pid) {
@@ -493,11 +507,11 @@ void detach_from_all_threads (pid_t pid)
                pid_found = True;
             }
             DEBUG(1, "PTRACE_DETACH pid %d tid %d status %s\n",
-                  vgdb_threads[i].lwpid, i, 
+                  vgdb_threads[i].lwpid, i,
                   name_of_ThreadStatus (vgdb_threads[i].status));
             res = ptrace (PTRACE_DETACH, vgdb_threads[i].lwpid, NULL, NULL);
             if (res != 0) {
-               ERROR(errno, "PTRACE_DETACH pid %d tid %d status %s res %ld\n", 
+               ERROR(errno, "PTRACE_DETACH pid %d tid %d status %s res %ld\n",
                      vgdb_threads[i].lwpid, i,
                      name_of_ThreadStatus (vgdb_threads[i].status),
                      res);
@@ -546,7 +560,7 @@ static int has_working_ptrace_getregset = -1;
 #endif
 
 /* Get the registers from pid into regs.
-   regs_bsz value gives the length of *regs. 
+   regs_bsz value gives the length of *regs.
    Returns True if all ok, otherwise False. */
 static
 Bool getregs (pid_t pid, void *regs, long regs_bsz)
@@ -662,7 +676,7 @@ Bool getregs (pid_t pid, void *regs, long regs_bsz)
 }
 
 /* Set the registers of pid to regs.
-   regs_bsz value gives the length of *regs. 
+   regs_bsz value gives the length of *regs.
    Returns True if all ok, otherwise False. */
 static
 Bool setregs (pid_t pid, void *regs, long regs_bsz)
@@ -853,7 +867,7 @@ Bool invoker_invoke_gdbserver (pid_t pid)
         web search '[patch] Fix syscall restarts for amd64->i386 biarch'
         e.g. http://sourceware.org/ml/gdb-patches/2009-11/msg00592.html */
      *(long *)&user_save.regs.rax = *(int*)&user_save.regs.rax;
-     DEBUG(1, "Sign extending %8.8lx to %8.8lx\n",
+     DEBUG(1, "Sign extending %8.8llx to %8.8llx\n",
            user_mod.regs.rax, user_save.regs.rax);
    }
 #elif defined(VGA_arm)
@@ -866,11 +880,13 @@ Bool invoker_invoke_gdbserver (pid_t pid)
    sp = user_mod.regs.gpr[1];
 #elif defined(VGA_s390x)
    sp = user_mod.regs.gprs[15];
-#elif defined(VGA_mips32)
+#elif defined(VGA_mips32) || defined(VGA_nanomips)
    long long *p = (long long *)user_mod.regs;
    sp = p[29];
 #elif defined(VGA_mips64)
    sp = user_mod.regs[29];
+#elif defined(VGA_riscv64)
+   sp = user_mod.regs.sp;
 #else
    I_die_here : (sp) architecture missing in vgdb-invoker-ptrace.c
 #endif
@@ -887,11 +903,11 @@ Bool invoker_invoke_gdbserver (pid_t pid)
       sp = sp - regsize;
       DEBUG(1, "push check arg ptrace_write_memory\n");
       assert(regsize == sizeof(check));
-      rw = ptrace_write_memory(pid, sp, 
-                               &check, 
+      rw = ptrace_write_memory(pid, sp,
+                               &check,
                                regsize);
       if (rw != 0) {
-         ERROR(rw, "push check arg ptrace_write_memory");
+         ERROR(rw, "push check arg ptrace_write_memory\n");
          detach_from_all_threads(pid);
          return False;
       }
@@ -900,11 +916,11 @@ Bool invoker_invoke_gdbserver (pid_t pid)
       DEBUG(1, "push bad_return return address ptrace_write_memory\n");
       // Note that for a 64 bits vgdb, only 4 bytes of NULL bad_return
       // are written.
-      rw = ptrace_write_memory(pid, sp, 
+      rw = ptrace_write_memory(pid, sp,
                                &bad_return,
                                regsize);
       if (rw != 0) {
-         ERROR(rw, "push bad_return return address ptrace_write_memory");
+         ERROR(rw, "push bad_return return address ptrace_write_memory\n");
          detach_from_all_threads(pid);
          return False;
       }
@@ -942,11 +958,11 @@ Bool invoker_invoke_gdbserver (pid_t pid)
       user_mod.regs.uregs[15] = shared32->invoke_gdbserver;
 
 #elif defined(VGA_arm64)
-      XERROR(0, "TBD arm64: vgdb a 32 bits executable with a 64 bits exe");
+      XERROR(0, "TBD arm64: vgdb a 32 bits executable with a 64 bits exe\n");
 
 #elif defined(VGA_s390x)
-      XERROR(0, "(fn32) s390x has no 32bits implementation");
-#elif defined(VGA_mips32)
+      XERROR(0, "(fn32) s390x has no 32bits implementation\n");
+#elif defined(VGA_mips32) || defined(VGA_nanomips)
       /* put check arg in register 4 */
       p[4] = check;
       /* put NULL return address in ra */
@@ -958,6 +974,10 @@ Bool invoker_invoke_gdbserver (pid_t pid)
 
 #elif defined(VGA_mips64)
       assert(0); // cannot vgdb a 32 bits executable with a 64 bits exe
+
+#elif defined(VGA_riscv64)
+      assert(0);
+
 #else
       I_die_here : architecture missing in vgdb-invoker-ptrace.c
 #endif
@@ -983,7 +1003,7 @@ Bool invoker_invoke_gdbserver (pid_t pid)
                                &bad_return,
                                sizeof(bad_return));
       if (rw != 0) {
-         ERROR(rw, "push bad_return return address ptrace_write_memory");
+         ERROR(rw, "push bad_return return address ptrace_write_memory\n");
          detach_from_all_threads(pid);
          return False;
       }
@@ -1056,7 +1076,7 @@ Bool invoker_invoke_gdbserver (pid_t pid)
       user_mod.regs.gprs[15] = sp;
       /* set program counter */
       user_mod.regs.psw.addr = shared64->invoke_gdbserver;
-#elif defined(VGA_mips32)
+#elif defined(VGA_mips32)  || defined(VGA_nanomips)
       assert(0); // cannot vgdb a 64 bits executable with a 32 bits exe
 #elif defined(VGA_mips64)
       /* put check arg in register 4 */
@@ -1065,6 +1085,10 @@ Bool invoker_invoke_gdbserver (pid_t pid)
       user_mod.regs[31] = bad_return;
       user_mod.regs[34] = shared64->invoke_gdbserver;
       user_mod.regs[25] = shared64->invoke_gdbserver;
+#elif defined(VGA_riscv64)
+      user_mod.regs.a0 = check;
+      user_mod.regs.ra = bad_return;
+      user_mod.regs.pc = shared64->invoke_gdbserver;
 #else
       I_die_here: architecture missing in vgdb-invoker-ptrace.c
 #endif
@@ -1072,7 +1096,7 @@ Bool invoker_invoke_gdbserver (pid_t pid)
    else {
       assert(0);
    }
-   
+
    if (!setregs(pid, &user_mod.regs, sizeof(user_mod.regs))) {
       detach_from_all_threads(pid);
       return False;
@@ -1082,9 +1106,9 @@ Bool invoker_invoke_gdbserver (pid_t pid)
       must restore the registers in case of cleanup. */
    pid_of_save_regs = pid;
    pid_of_save_regs_continued = False;
-      
 
-   /* We PTRACE_CONT-inue pid. 
+
+   /* We PTRACE_CONT-inue pid.
       Either gdbserver will be invoked directly (if all
       threads are interruptible) or gdbserver will be
       called soon by the scheduler. In the first case,

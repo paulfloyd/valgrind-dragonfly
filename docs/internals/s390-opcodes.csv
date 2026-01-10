@@ -268,11 +268,11 @@ cdbr,"compare long bfp",implemented,
 cdb,"compare long bfp",implemented,
 cebr,"compare short bfp",implemented,
 ceb,"compare short bfp",implemented,
-kxbr,"compare and signal extended bfp","not implemented",
-kdbr,"compare and signal long bfp","not implemented",
-kdb,"compare and signal long bfp","not implemented",
-kebr,"compare and signal short bfp","not implemented",
-keb,"compare and signal short bfp","not implemented",
+kxbr,"compare and signal extended bfp",implemented,
+kdbr,"compare and signal long bfp",implemented,
+kdb,"compare and signal long bfp",implemented,
+kebr,"compare and signal short bfp",implemented,
+keb,"compare and signal short bfp",implemented,
 cxfbr,"convert from fixed 32 to extended bfp",implemented,
 cdfbr,"convert from fixed 32 to long bfp",implemented,
 cefbr,"convert from fixed 32 to short bfp",implemented,
@@ -619,15 +619,15 @@ msdr,"multiply and subtract long hfp","won't do","hfp instruction"
 msd,"multiply and subtract long hfp","won't do","hfp instruction"
 mser,"mutliply and subtract short hfp","won't do","hfp instruction"
 mse,"multiply and subttract short hfp","won't do","hfp instruction"
-km,"cipher message","not implemented",
-kmc,"cipher message with chaining","not implemented",
-kmf,"cipher message with CFB","not implemented",
-kmo,"cipher message with OFB","not implemented",
-kmctr,"cipher message with counter","not implemented",
-pcc,"perform cryptographic computation","not implemented",
-kimd,"compute intermediate message digest","not implemented",
-klmd,"compute last message digest","not implemented",
-kmac,"compute message authentication code","not implemented",
+km,"cipher message",implemented,
+kmc,"cipher message with chaining",implemented,
+kmf,"cipher message with CFB",implemented,
+kmo,"cipher message with OFB",implemented,
+kmctr,"cipher message with counter",implemented,
+pcc,"perform cryptographic computation",implemented,
+kimd,"compute intermediate message digest",implemented,
+klmd,"compute last message digest",implemented,
+kmac,"compute message authentication code",implemented,
 afi,"add immediate 32",implemented,
 agfi,"add immediate 64<32",implemented,
 alfi,"add logical immediate 32",implemented,
@@ -903,7 +903,7 @@ srk,"subtract 3 operands 32 bit",implemented,
 sgrk,"subtract 3 operands 64 bit",implemented,
 slrk,"subtract logical 3 operands 32 bit",implemented,
 slgrk,"subtract logical 3 operands 64 bit",implemented,
-popcnt,"population count","implemented",
+popcnt,"population count",implemented,"z196/arch13"
 rrbm,"reset reference bits multiple",N/A,"privileged instruction"
 cefbra,"convert from 32 bit fixed to short bfp with rounding mode",implemented,
 cdfbra,"convert from 32 bit fixed to long bfp with rounding mode",implemented,
@@ -950,6 +950,9 @@ clgdtr,"convert to 64 bit fixed logical from long dfp with rounding mode",implem
 clgxtr,"convert to 64 bit fixed logical from extended dfp with rounding mode",implemented
 clfdtr,"convert to 32 bit fixed logical from long dfp with rounding mode",implemented
 clfxtr,"convert to 32 bit fixed logical from extended dfp with rounding mode",implemented
+cgdtra,"convert to 64 bit fixed from long dfp with rounding mode",implemented
+cgxtra,"convert to 64 bit fixed from extended dfp with rounding mode",implemented
+cxgtra,"convert from fixed extended dfp with rounding mode",implemented
 ddtra,"divide long dfp with rounding mode",implemented
 dxtra,"divide extended dfp with rounding mode",implemented
 mdtra,"multiply long dfp with rounding mode",implemented
@@ -963,10 +966,10 @@ tabort,"transaction abort","not implemented",zEC12,
 tbegin,"transaction begin","not implemented",zEC12,
 tbeginc,"constrained transaction begin","not implemented",zEC12,
 tend,"transaction end","not implemented",zEC12,
-bpp,"branch prediction preload","not implemented",zEC12,
-bprp,"branch prediction relative preload","not implemented",zEC12,
-ppa,"perform processor assist","not implemented",zEC12,
-niai,"next instruction access intent","not implemented",zEC12,
+bpp,"branch prediction preload",implemented,zEC12,
+bprp,"branch prediction relative preload",implemented,zEC12,
+ppa,"perform processor assist",implemented,zEC12,
+niai,"next instruction access intent",implemented,zEC12,
 crdte,"compare and replace DAT table entry",N/A,"privileged instruction"
 lat,"load and trap 32 bit",implemented,zEC12,
 lgat,"load and trap 64 bit",implemented,zEC12,
@@ -1343,7 +1346,9 @@ lochi,"load halfword immediate on condition into 32 bit gpr",implemented,z13
 verllvh,"vector element rotate left logical reg halfword",implemented,z13
 cpdt,"convert from long dfp to packed","not implemented",z13
 vrepb,"vector replicate byte","implemented",z13
-ppno,"perform pseudorandom number operation",implemented,z13
+prno,"perform random number operation",implemented,z13
+irbm,"insert reference bits multiple",N/A,"privileged instruction",arch12
+tpei,"test pending external interruption",N/A,"privileged instruction",arch12
 vfeef,"vector find element equal word","implemented",z13
 vac,"vector add with carry",implemented,z13
 verimf,"vector element rotate and insert under mask word",implemented,z13
@@ -1497,159 +1502,159 @@ vfce,"vector fp compare equal",implemented,z13
 vs,"vector subtract",implemented,z13
 vfeebs,"vector find element equal byte",implemented,z13
 vlvgg,"vector load VR double word element from GR",implemented,z13
-vbperm,"vector bit permute","not implemented",arch12
-vllezlf,"vector load logical word element and zero - left aligned","not implemented","arch12"
-vmsl,"vector multiply sum logical","not implemented","arch12"
-vmslg,"vector multiply sum logical double word","not implemented","arch12"
-vnx,"vector not exclusive or","not implemented","arch12"
-vnn,"vector nand","not implemented","arch12"
-voc,"vector or with complement","not implemented","arch12"
-vpopctb,"vector population count byte",implemented,"arch12"
-vpopcth,"vector population count halfword","not implemented","arch12"
-vpopctf,"vector population count word","not implemented","arch12"
-vpopctg,"vector population count double word","not implemented","arch12"
-vfasb,"vector fp add short","not implemented","arch12"
-wfasb,"scalar vector fp add scalar short","not implemented","arch12"
-wfaxb,"scalar vector fp add scalar extended","not implemented","arch12"
-wfcsb,"scalar vector fp compare scalar short","not implemented","arch12"
-wfcxb,"scalar vector fp compare scalar extended","not implemented","arch12"
-wfksb,"scalar vector fp compare and signal scalar short","not implemented","arch12"
-wfkxb,"scalar vector fp compare and signal scalar extended","not implemented","arch12"
-vfcesb,"vector fp compare equal short","not implemented","arch12"
-vfcesbs,"vector fp compare equal short","not implemented","arch12"
-wfcesb,"scalar vector fp compare equal scalar short","not implemented","arch12"
-wfcesbs,"scalar fp compare equal scalar short","not implemented","arch12"
-wfcexb,"scalar vector fp compare equal scalar extended","not implemented","arch12"
-wfcexbs,"scalar vector fp compare equal scalar extended","not implemented","arch12"
-vfkesb,"vector fp compare and signal equal short","not implemented","arch12"
-vfkesbs,"vector fp compare and signal equal short","not implemented","arch12"
-wfkesb,"scalar vector fp compare and signal equal scalar short","not implemented","arch12"
-wfkesbs,"scalar fp compare and signal equal scalar short","not implemented","arch12"
-vfkedb,"vector fp compare and signal equal long","not implemented","arch12"
-vfkedbs,"vector fp compare and signal equal long","not implemented","arch12"
-wfkedb,"vector fp compare and signal equal long","not implemented","arch12"
-wfkedbs,"vector fp compare and signal equal long","not implemented","arch12"
-wfkexb,"scalar vector fp compare and signal equal scalar extended","not implemented","arch12"
-wfkexbs,"scalar vector fp compare and signal equal scalar extended","not implemented","arch12"
-vfchsb,"vector fp compare high short","not implemented","arch12"
-vfchsbs,"vector fp compare high short","not implemented","arch12"
-wfchsb,"scalar vector fp compare high scalar short","not implemented","arch12"
-wfchsbs,"scalar vector fp compare high scalar short","not implemented","arch12"
-wfchxb,"scalar vector fp compare high scalar extended","not implemented","arch12"
-wfchxbs,"scalar vector fp compare high scalar extended","not implemented","arch12"
-vfkhsb,"vector fp compare and signal high short","not implemented","arch12"
-vfkhsbs,"vector fp compare and signal high short","not implemented","arch12"
-wfkhsb,"scalar vector fp compare and signal high scalar short","not implemented","arch12"
-wfkhsbs,"scalar vector fp compare and signal high scalar short","not implemented","arch12"
-vfkhdb,"vector fp compare and signal high long","not implemented","arch12"
-vfkhdbs,"vector fp compare and signal high long","not implemented","arch12"
-wfkhdb,"vector fp compare and signal high long","not implemented","arch12"
-wfkhdbs,"vector fp compare and signal high long","not implemented","arch12"
-wfkhxb,"scalar vector fp compare and signal high scalar extended","not implemented","arch12"
-wfkhxbs,"scalar vector fp compare and signal high scalar extended","not implemented","arch12"
-vfchesb,"vector fp compare high or equal short","not implemented","arch12"
-vfchesbs,"vector fp compare high or equal short","not implemented","arch12"
-wfchesb,"scalar vector fp compare high or equal scalar short","not implemented","arch12"
-wfchesbs,"scalar vector fp compare high or equal scalar short","not implemented","arch12"
-wfchexb,"scalar vector fp compare high or equal scalar extended","not implemented","arch12"
-wfchexbs,"scalar vector fp compare high or equal scalar extended","not implemented","arch12"
-vfkhesb,"vector fp compare and signal high or equal short","not implemented","arch12"
-vfkhesbs,"vector fp compare and signal high or equal short","not implemented","arch12"
-wfkhesb,"scalar vector fp compare and signal high or equal scalar short","arch12"implemented","arch12"
-wfkhesbs,"scalar vector fp compare and signal high or equal scalar short","arch12"implemented","arch12"
-vfkhedb,"vector fp compare and signal high or equal long","not implemented","arch12"
-vfkhedbs,"vector fp compare and signal high or equal long","not implemented","arch12"
-wfkhedb,"vector fp compare and signal high or equal long","not implemented","arch12"
-wfkhedbs,"vector fp compare and signal high or equal long","not implemented","arch12"
-wfkhexb,"scalar vector fp compare and signal high or equal scalar extended","arch12"implemented","arch12"
-wfkhexbs,"scalar vector fp compare and signal high or equal scalar extended","arch12"implemented","arch12"
-vfdsb,"vector fp divide short","not implemented","arch12"
-wfdsb,"scalar vector fp divide scalar short","not implemented","arch12"
-wfdxb,"scalar vector fp divide scalar extended","not implemented","arch12"
-vfisb,"vector load fp integer short","not implemented","arch12"
-wfisb,"scalar vector load fp integer scalar short","not implemented","arch12"
-wfixb,"scalar vector load fp integer scalar extended","not implemented","arch12"
-vfll,"vector fp load lengthened","not implemented","arch12"
-vflls,"vector fp load lengthened","not implemented","arch12"
-wflls,"scalar vector fp load lengthened short","not implemented","arch12"
-wflld,"scalar vector fp load lengthened long","not implemented","arch12"
-vflr,"vector fp load rounded","not implemented","arch12"
-vflrd,"vector fp load rounded long","not implemented","arch12"
-wflrd,"scalar vector fp load rounded long","not implemented","arch12"
-wflrx,"scalar vector fp load rounded extended","not implemented","arch12"
-vfmax,"vector fp maximum","not implemented","arch12"
-vfmaxsb,"vector fp maximum short","not implemented","arch12"
-vfmaxdb,"vector fp maximum long","not implemented","arch12"
-wfmaxsb,"scalar fp maximum scalar short","not implemented","arch12"
-wfmaxdb,"scalar fp maximum scalar long","not implemented","arch12"
-wfmaxxb,"scalar fp maximum scalar extended","not implemented","arch12"
-vfmin,"vector fp minimum","not implemented","arch12"
-vfminsb,"vector fp minimum short","not implemented","arch12"
-vfmindb,"vector fp minimum long","not implemented","arch12"
-wfminsb,"scalar fp minimum scalar short","not implemented","arch12"
-wfmindb,"scalar fp minimum scalar long","not implemented","arch12"
-wfminxb,"scalar fp minimum scalar extended","not implemented","arch12"
-vfmsb,"vector fp multiply short","not implemented","arch12"
-wfmsb,"scalar vector fp multiply scalar short","not implemented","arch12"
-wfmxb,"scalar vector fp multiply scalar extended","not implemented","arch12"
-vfmasb,"vector fp multiply and add short","not implemented","arch12"
-wfmasb,"scalar vector fp multiply and add scalar short","not implemented","arch12"
-wfmaxb,"scalar vector fp multiply and add scalar extended","not implemented","arch12"
-vfmssb,"vector fp multiply and subtract short","not implemented","arch12"
-wfmssb,"scalar vector fp multiply and subtract scalar short","not implemented","arch12"
-wfmsxb,"scalar vector fp multiply and subtract scalar extended","not implemented","arch12"
-vfnma,"vector fp negative multiply and add","not implemented","arch12"
-vfnmasb,"vector fp negative multiply and add short","not implemented","arch12"
-wfnmasb,"scalar vector fp negative multiply and add scalar short","not implemented","arch12"
-vfnmadb,"vector fp negative multiply and add long","not implemented","arch12"
-wfnmadb,"scalar vector fp negative multiply and add scalar long","not implemented","arch12"
-wfnmaxb,"scalar vector fp negative multiply and add scalar extended","not implemented","arch12"
-vfnms,"vector fp negative multiply and subtract","not implemented","arch12"
-vfnmssb,"vector fp negative multiply and subtract short","not implemented","arch12"
-wfnmssb,"scalar vector fp negative multiply and subtract scalar short","arch12"implemented","arch12"
-vfnmsdb,"vector fp negative multiply and subtract long","not implemented","arch12"
-wfnmsdb,"scalar vector fp negative multiply and subtract scalar long","not implemented","arch12"
-wfnmsxb,"scalar vector fp negative multiply and subtract scalar extended","arch12"implemented","arch12"
-vfpsosb,"vector fp perform sign operation short","not implemented","arch12"
-wfpsosb,"scalar vector fp perform sign operation scalar short","not implemented","arch12"
-vflcsb,"vector fp perform sign operation short","not implemented","arch12"
-wflcsb,"scalar vector fp perform sign operation scalar short","not implemented","arch12"
-vflnsb,"vector fp perform sign operation short","not implemented","arch12"
-wflnsb,"scalar vector fp perform sign operation scalar short","not implemented","arch12"
-vflpsb,"vector fp perform sign operation short","not implemented","arch12"
-wflpsb,"scalar vector fp perform sign operation scalar short","not implemented","arch12"
-wfpsoxb,"scalar vector fp perform sign operation scalar extended","not implemented","arch12"
-wflcxb,"scalar vector fp perform sign operation scalar extended","not implemented","arch12"
-wflnxb,"scalar vector fp perform sign operation scalar extended","not implemented","arch12"
-wflpxb,"scalar vector fp perform sign operation scalar extended","not implemented","arch12"
-vfsqsb,"vector fp square root short","not implemented","arch12"
-wfsqsb,"scalar vector fp square root scalar short","not implemented","arch12"
-wfsqxb,"scalar vector fp square root scalar extended","not implemented","arch12"
-vfssb,"vector fp subtract short","not implemented","arch12"
-wfssb,"scalar vector fp subtract scalar short","not implemented","arch12"
-wfsxb,"scalar vector fp subtract scalar extended","not implemented","arch12"
-vftcisb,"vector fp test data class immediate short","not implemented","arch12"
-wftcisb,"scalar vector fp test data class immediate scalar short","not implemented","arch12"
-wftcixb,"scalar vector fp test data class immediate scalar extended","not implemented","arch12"
-agh,"add halfword to 64 bit value","not implemented","arch12"
-bic,"branch indirect on condition","not implemented","arch12"
-bi,"unconditional indirect branch","not implemented","arch12"
-mgrk,"multiply 64x64reg -> 128","not implemented","arch12"
-mg,"multiply 64x64mem -> 128","not implemented","arch12"
-mgh,"multiply halfword 64x16mem -> 64","not implemented","arch12"
-msrkc,"multiply single 32x32 -> 32","not implemented","arch12"
-msgrkc,"multiply single 64x64 -> 64","not implemented","arch12"
-msc,"multiply single 32x32mem -> 32","not implemented","arch12"
-msgc,"multiply single 64x64mem -> 64","not implemented","arch12"
-sgh,"subtract halfword from 64 bit value","not implemented","arch12"
-vlrlr,"vector load rightmost with length","not implemented","arch12"
-vlrl,"vector load rightmost with immediate length","not implemented","arch12"
-vstrlr,"vector store rightmost with length","not implemented","arch12"
-vstrl,"vector store rightmost with immediate length","not implemented","arch12"
+vbperm,"vector bit permute",implemented,arch12
+vllezlf,"vector load logical word element and zero - left aligned",implemented,arch12
+vmsl,"vector multiply sum logical",implemented,arch12
+vmslg,"vector multiply sum logical double word",implemented,arch12
+vnx,"vector not exclusive or",implemented,arch12
+vnn,"vector nand",implemented,arch12
+voc,"vector or with complement",implemented,arch12
+vpopctb,"vector population count byte",implemented,arch12
+vpopcth,"vector population count halfword",implemented,arch12
+vpopctf,"vector population count word",implemented,arch12
+vpopctg,"vector population count double word",implemented,arch12
+vfasb,"vector fp add short",implemented,arch12
+wfasb,"scalar vector fp add scalar short",implemented,arch12
+wfaxb,"scalar vector fp add scalar extended",implemented,arch12
+wfcsb,"scalar vector fp compare scalar short",implemented,arch12
+wfcxb,"scalar vector fp compare scalar extended",implemented,arch12
+wfksb,"scalar vector fp compare and signal scalar short",implemented,arch12
+wfkxb,"scalar vector fp compare and signal scalar extended",implemented,arch12
+vfcesb,"vector fp compare equal short",implemented,arch12
+vfcesbs,"vector fp compare equal short",implemented,arch12
+wfcesb,"scalar vector fp compare equal scalar short",implemented,arch12
+wfcesbs,"scalar fp compare equal scalar short",implemented,arch12
+wfcexb,"scalar vector fp compare equal scalar extended",implemented,arch12
+wfcexbs,"scalar vector fp compare equal scalar extended",implemented,arch12
+vfkesb,"vector fp compare and signal equal short",implemented,arch12
+vfkesbs,"vector fp compare and signal equal short",implemented,arch12
+wfkesb,"scalar vector fp compare and signal equal scalar short",implemented,arch12
+wfkesbs,"scalar fp compare and signal equal scalar short",implemented,arch12
+vfkedb,"vector fp compare and signal equal long",implemented,arch12
+vfkedbs,"vector fp compare and signal equal long",implemented,arch12
+wfkedb,"vector fp compare and signal equal long",implemented,arch12
+wfkedbs,"vector fp compare and signal equal long",implemented,arch12
+wfkexb,"scalar vector fp compare and signal equal scalar extended",implemented,arch12
+wfkexbs,"scalar vector fp compare and signal equal scalar extended",implemented,arch12
+vfchsb,"vector fp compare high short",implemented,arch12
+vfchsbs,"vector fp compare high short",implemented,arch12
+wfchsb,"scalar vector fp compare high scalar short",implemented,arch12
+wfchsbs,"scalar vector fp compare high scalar short",implemented,arch12
+wfchxb,"scalar vector fp compare high scalar extended",implemented,arch12
+wfchxbs,"scalar vector fp compare high scalar extended",implemented,arch12
+vfkhsb,"vector fp compare and signal high short",implemented,arch12
+vfkhsbs,"vector fp compare and signal high short",implemented,arch12
+wfkhsb,"scalar vector fp compare and signal high scalar short",implemented,arch12
+wfkhsbs,"scalar vector fp compare and signal high scalar short",implemented,arch12
+vfkhdb,"vector fp compare and signal high long",implemented,arch12
+vfkhdbs,"vector fp compare and signal high long",implemented,arch12
+wfkhdb,"vector fp compare and signal high long",implemented,arch12
+wfkhdbs,"vector fp compare and signal high long",implemented,arch12
+wfkhxb,"scalar vector fp compare and signal high scalar extended",implemented,arch12
+wfkhxbs,"scalar vector fp compare and signal high scalar extended",implemented,arch12
+vfchesb,"vector fp compare high or equal short",implemented,arch12
+vfchesbs,"vector fp compare high or equal short",implemented,arch12
+wfchesb,"scalar vector fp compare high or equal scalar short",implemented,arch12
+wfchesbs,"scalar vector fp compare high or equal scalar short",implemented,arch12
+wfchexb,"scalar vector fp compare high or equal scalar extended",implemented,arch12
+wfchexbs,"scalar vector fp compare high or equal scalar extended",implemented,arch12
+vfkhesb,"vector fp compare and signal high or equal short",implemented,arch12
+vfkhesbs,"vector fp compare and signal high or equal short",implemented,arch12
+wfkhesb,"scalar vector fp compare and signal high or equal scalar short",implemented,arch12
+wfkhesbs,"scalar vector fp compare and signal high or equal scalar short",implemented,arch12
+vfkhedb,"vector fp compare and signal high or equal long",implemented,arch12
+vfkhedbs,"vector fp compare and signal high or equal long",implemented,arch12
+wfkhedb,"vector fp compare and signal high or equal long",implemented,arch12
+wfkhedbs,"vector fp compare and signal high or equal long",implemented,arch12
+wfkhexb,"scalar vector fp compare and signal high or equal scalar extended",implemented,arch12
+wfkhexbs,"scalar vector fp compare and signal high or equal scalar extended",implemented,arch12
+vfdsb,"vector fp divide short",implemented,arch12
+wfdsb,"scalar vector fp divide scalar short",implemented,arch12
+wfdxb,"scalar vector fp divide scalar extended",implemented,arch12
+vfisb,"vector load fp integer short",implemented,arch12
+wfisb,"scalar vector load fp integer scalar short",implemented,arch12
+wfixb,"scalar vector load fp integer scalar extended",implemented,arch12
+vfll,"vector fp load lengthened",implemented,arch12
+vflls,"vector fp load lengthened",implemented,arch12
+wflls,"scalar vector fp load lengthened short",implemented,arch12
+wflld,"scalar vector fp load lengthened long",implemented,arch12
+vflr,"vector fp load rounded",implemented,arch12
+vflrd,"vector fp load rounded long",implemented,arch12
+wflrd,"scalar vector fp load rounded long",implemented,arch12
+wflrx,"scalar vector fp load rounded extended",implemented,arch12
+vfmax,"vector fp maximum",implemented,arch12
+vfmaxsb,"vector fp maximum short",implemented,arch12
+vfmaxdb,"vector fp maximum long",implemented,arch12
+wfmaxsb,"scalar fp maximum scalar short",implemented,arch12
+wfmaxdb,"scalar fp maximum scalar long",implemented,arch12
+wfmaxxb,"scalar fp maximum scalar extended",implemented,arch12
+vfmin,"vector fp minimum",implemented,arch12
+vfminsb,"vector fp minimum short",implemented,arch12
+vfmindb,"vector fp minimum long",implemented,arch12
+wfminsb,"scalar fp minimum scalar short",implemented,arch12
+wfmindb,"scalar fp minimum scalar long",implemented,arch12
+wfminxb,"scalar fp minimum scalar extended",implemented,arch12
+vfmsb,"vector fp multiply short",implemented,arch12
+wfmsb,"scalar vector fp multiply scalar short",implemented,arch12
+wfmxb,"scalar vector fp multiply scalar extended",implemented,arch12
+vfmasb,"vector fp multiply and add short",implemented,arch12
+wfmasb,"scalar vector fp multiply and add scalar short",implemented,arch12
+wfmaxb,"scalar vector fp multiply and add scalar extended",implemented,arch12
+vfmssb,"vector fp multiply and subtract short",implemented,arch12
+wfmssb,"scalar vector fp multiply and subtract scalar short",implemented,arch12
+wfmsxb,"scalar vector fp multiply and subtract scalar extended",implemented,arch12
+vfnma,"vector fp negative multiply and add",implemented,arch12
+vfnmasb,"vector fp negative multiply and add short",implemented,arch12
+wfnmasb,"scalar vector fp negative multiply and add scalar short",implemented,arch12
+vfnmadb,"vector fp negative multiply and add long",implemented,arch12
+wfnmadb,"scalar vector fp negative multiply and add scalar long",implemented,arch12
+wfnmaxb,"scalar vector fp negative multiply and add scalar extended",implemented,arch12
+vfnms,"vector fp negative multiply and subtract",implemented,arch12
+vfnmssb,"vector fp negative multiply and subtract short",implemented,arch12
+wfnmssb,"scalar vector fp negative multiply and subtract scalar short",implemented,arch12
+vfnmsdb,"vector fp negative multiply and subtract long",implemented,arch12
+wfnmsdb,"scalar vector fp negative multiply and subtract scalar long",implemented,arch12
+wfnmsxb,"scalar vector fp negative multiply and subtract scalar extended",implemented,arch12
+vfpsosb,"vector fp perform sign operation short",implemented,arch12
+wfpsosb,"scalar vector fp perform sign operation scalar short",implemented,arch12
+vflcsb,"vector fp perform sign operation short",implemented,arch12
+wflcsb,"scalar vector fp perform sign operation scalar short",implemented,arch12
+vflnsb,"vector fp perform sign operation short",implemented,arch12
+wflnsb,"scalar vector fp perform sign operation scalar short",implemented,arch12
+vflpsb,"vector fp perform sign operation short",implemented,arch12
+wflpsb,"scalar vector fp perform sign operation scalar short",implemented,arch12
+wfpsoxb,"scalar vector fp perform sign operation scalar extended",implemented,arch12
+wflcxb,"scalar vector fp perform sign operation scalar extended",implemented,arch12
+wflnxb,"scalar vector fp perform sign operation scalar extended",implemented,arch12
+wflpxb,"scalar vector fp perform sign operation scalar extended",implemented,arch12
+vfsqsb,"vector fp square root short",implemented,arch12
+wfsqsb,"scalar vector fp square root scalar short",implemented,arch12
+wfsqxb,"scalar vector fp square root scalar extended",implemented,arch12
+vfssb,"vector fp subtract short",implemented,arch12
+wfssb,"scalar vector fp subtract scalar short",implemented,arch12
+wfsxb,"scalar vector fp subtract scalar extended",implemented,arch12
+vftcisb,"vector fp test data class immediate short",implemented,arch12
+wftcisb,"scalar vector fp test data class immediate scalar short",implemented,arch12
+wftcixb,"scalar vector fp test data class immediate scalar extended",implemented,arch12
+agh,"add halfword to 64 bit value",implemented,"arch12"
+bic,"branch indirect on condition",implemented,"arch12"
+bi,"unconditional indirect branch",implemented,"arch12"
+mgrk,"multiply 64x64reg -> 128",implemented,"arch12"
+mg,"multiply 64x64mem -> 128",implemented,"arch12"
+mgh,"multiply halfword 64x16mem -> 64",implemented,"arch12"
+msrkc,"multiply single 32x32 -> 32",implemented,"arch12"
+msgrkc,"multiply single 64x64 -> 64",implemented,"arch12"
+msc,"multiply single 32x32mem -> 32",implemented,"arch12"
+msgc,"multiply single 64x64mem -> 64",implemented,"arch12"
+sgh,"subtract halfword from 64 bit value",implemented,"arch12"
+vlrlr,"vector load rightmost with length",implemented,arch12
+vlrl,"vector load rightmost with immediate length",implemented,arch12
+vstrlr,"vector store rightmost with length",implemented,arch12
+vstrl,"vector store rightmost with immediate length",implemented,arch12
 vap,"vector add decimal","not implemented","arch12"
 vcp,"vector compare decimal","not implemented","arch12"
-vcvb,"vector convert to binary 32 bit","not implemented","arch12"
-vcvbg,"vector convert to binary 64 bit","not implemented","arch12"
+vcvb,"vector convert to binary 32 bit","not implemented","arch12/arch13"
+vcvbg,"vector convert to binary 64 bit","not implemented","arch12/arch13"
 vcvd,"vector convert to decimal 32 bit","not implemented","arch12"
 vcvdg,"vector convert to decimal 64 bit","not implemented","arch12"
 vdp,"vector divide decimal","not implemented","arch12"
@@ -1668,4 +1673,168 @@ lgg,"load guarded 64 bit","not implemented","arch12"
 llgfsg,"load logical and shift guarded 64 bit","not implemented","arch12"
 lgsc,"load guarded storage controls","not implemented","arch12"
 stgsc,"store guarded storage controls","not implemented","arch12"
-kma,"cipher message with galois counter mode","not implemented","arch12"
+kma,"cipher message with galois counter mode",implemented,"arch12"
+ncrk,"and with complement 32 bit",implemented,arch13
+ncgrk,"and with complement 64 bit",implemented,arch13
+mvcrl,"move right to left",implemented,arch13
+nnrk,"nand 32 bit",implemented,arch13
+nngrk,"nand 64 bit",implemented,arch13
+nork,"nor 32 bit",implemented,arch13
+nogrk,"nor 64 bit",implemented,arch13
+nxrk,"not exclusive or 32 bit",implemented,arch13
+nxgrk,"not exclusive or 64 bit",implemented,arch13
+ocrk,"or with complement 32 bit",implemented,arch13
+ocgrk,"or with complement 64 bit",implemented,arch13
+selr,"select 32 bit",implemented,arch13
+selgr,"select 64 bit",implemented,arch13
+selfhr,"select high",implemented,arch13
+vlbr,"vector load byte reversed elements",implemented,arch13
+vlbrh,"vector load byte reversed halfword elements",implemented,arch13
+vlbrf,"vector load byte reversed word elements",implemented,arch13
+vlbrg,"vector load byte reversed doubleword elements",implemented,arch13
+vlbrq,"vector load byte reversed quadword elements",implemented,arch13
+vler,"vector load elements reversed",implemented,arch13
+vlerh,"vector load halfword elements reversed",implemented,arch13
+vlerf,"vector load word elements reversed",implemented,arch13
+vlerg,"vector load doubleword elements reversed",implemented,arch13
+vllebrz,"vector load byte reversed element and zero",implemented,arch13
+vllebrzh,"vector load byte reversed halfword element and zero",implemented,arch13
+vllebrzf,"vector load byte reversed word element and zero",implemented,arch13
+ldrv,"load byte reversed doubleword",implemented,arch13
+vllebrzg,"vector load byte reversed doubleword element and zero",implemented,arch13
+lerv,"load byte reversed word",implemented,arch13
+vllebrze,"vector load byte reversed word element left-aligned and zero",implemented,arch13
+vlebrh,"vector load byte reversed halfword element",implemented,arch13
+vlebrf,"vector load byte reversed word element",implemented,arch13
+vlebrg,"vector load byte reversed doubleword element",implemented,arch13
+vlbrrep,"vector load byte reversed element and replicate",implemented,arch13
+vlbrreph,"vector load byte reversed halfword element and replicate",implemented,arch13
+vlbrrepf,"vector load byte reversed word element and replicate",implemented,arch13
+vlbrrepg,"vector load byte reversed doubleword element and replicate",implemented,arch13
+vstbr,"vector store byte reversed elements",implemented,arch13
+vstbrh,"vector store byte reversed halfword elements",implemented,arch13
+vstbrf,"vector store byte reversed word elements",implemented,arch13
+vstbrg,"vector store byte reversed doubleword elements",implemented,arch13
+vstbrq,"vector store byte reversed quadword elements",implemented,arch13
+vster,"vector store elements reversed",implemented,arch13
+vsterh,"vector store halfword elements reversed",implemented,arch13
+vsterf,"vector store word elements reversed",implemented,arch13
+vsterg,"vector store doubleword elements reversed",implemented,arch13
+vstebrh,"vector store byte reversed halfword element",implemented,arch13
+vstebrf,"vector store byte reversed word element",implemented,arch13
+sterv,"store byte reversed word",implemented,arch13
+vstebrg,"vector store byte reversed doubleword element",implemented,arch13
+stdrv,"store byte reversed doubleword",implemented,arch13
+vsld,"vector shift left double by bit",implemented,arch13
+vsrd,"vector shift right double by bit",implemented,arch13
+vstrs,"vector string search",implemented,arch13
+vstrsb,"vector string search byte",implemented,arch13
+vstrsh,"vector string search halfword",implemented,arch13
+vstrsf,"vector string search word",implemented,arch13
+vstrszb,"vector string search byte zero",implemented,arch13
+vstrszh,"vector string search halfword zero",implemented,arch13
+vstrszf,"vector string search word zero",implemented,arch13
+vcfps,"vector fp convert from fixed",implemented,arch13
+vcefb,"vector fp convert from fixed 32 bit",implemented,arch13
+wcefb,"vector fp convert from fixed 32 bit",implemented,arch13
+vcfpl,"vector fp convert from logical",implemented,arch13
+vcelfb,"vector fp convert from logical 32 bit",implemented,arch13
+wcelfb,"vector fp convert from logical 32 bit",implemented,arch13
+vcsfp,"vector fp convert to fixed",implemented,arch13
+vcfeb,"vector fp convert to fixed 32 bit",implemented,arch13
+wcfeb,"vector fp convert to fixed 32 bit",implemented,arch13
+vclfp,"vector fp convert to logical",implemented,arch13
+vclfeb,"vector fp convert to logical 32 bit",implemented,arch13
+wclfeb,"vector fp convert to logical 32 bit",implemented,arch13
+dfltcc,"deflate conversion call",implemented,arch13
+sortl,"sort lists","not implemented",arch13
+kdsa,"compute digital signature authentication",implemented,arch13
+vschp,"decimal scale and convert to hfp","not implemented",arch14
+vscshp,"decimal scale and convert and split to hfp","not implemented",arch14
+vcsph,"vector convert hfp to scaled decimal","not implemented",arch14
+vclzdp,"vector count leading zero digits","not implemented",arch14
+vpkzr,"vector pack zoned register","not implemented",arch14
+vsrpr,"vector shift and round decimal register","not implemented",arch14
+vupkzh,"vector unpack zoned high","not implemented",arch14
+vupkzl,"vector unpack zoned low","not implemented",arch14
+nnpa,"neural network processing assist",implemented,arch14
+vclfnh,"vector fp convert and lengthen from nnp high","implemented",arch14
+vclfnl,"vector fp convert and lengthen from nnp low","implemented",arch14
+vcrnf,"vector fp convert and round to nnp","implemented",arch14
+vcfn,"vector fp convert from nnp","implemented",arch14
+vcnf,"vector fp convert to nnp","implemented",arch14
+rdp,"reset dat protection",N/A,"privileged instruction"
+lpswey,"load PSW extended",N/A,"privileged instruction"
+lbear,"load bear",N/A,"privileged instruction"
+stbear,"store bear",N/A,"privileged instruction"
+qpaci,"query processor activity counter information",N/A,"privileged instruction"
+bdepg,"bit deposit","not implemented",arch15
+bextg,"bit extract","not implemented",arch15
+cal,"compare and load 32","not implemented",arch15
+calg,"compare and load 64","not implemented",arch15
+calgf,"compare and load 64<32","not implemented",arch15
+clzg,"count leading zeros","not implemented",arch15
+ctzg,"count trailing zeros","not implemented",arch15
+llxab,"load logical indexed address (shift left 0)","not implemented",arch15
+llxah,"load logical indexed address (shift left 1)","not implemented",arch15
+llxaf,"load logical indexed address (shift left 2)","not implemented",arch15
+llxag,"load logical indexed address (shift left 3)","not implemented",arch15
+llxaq,"load logical indexed address (shift left 4)","not implemented",arch15
+lxab,"load indexed address (shift left 0)","not implemented",arch15
+lxah,"load indexed address (shift left 1)","not implemented",arch15
+lxaf,"load indexed address (shift left 2)","not implemented",arch15
+lxag,"load indexed address (shift left 3)","not implemented",arch15
+lxaq,"load indexed address (shift left 4)","not implemented",arch15
+pfcr,"perform functions with concurrent results","not implemented",arch15
+vblend,"vector blend","not implemented",arch15
+vcvbq,"vector convert to binary 128 bit","not implemented",arch15
+vcvdq,"vector convert to decimal 128 bit","not implemented",arch15
+vd,"vector divide","not implemented",arch15
+vdl,"vector divide logical","not implemented",arch15
+veval,"vector evaluate","not implemented",arch15
+vgem,"vector generate element masks","not implemented",arch15
+vr,"vector remainder","not implemented",arch15
+vrl,"vector remainder logical","not implemented",arch15
+vtz,"vector test zoned","not implemented",arch15
+vavgq,"vector average quadword","not implemented",arch15
+vavglq,"vector average logical quadword","not implemented",arch15
+vecq,"vector element compare quadword","not implemented",arch15
+veclq,"vector element compare logical quadword","not implemented",arch15
+vceqq,"vector compare equal quadword","not implemented",arch15
+vceqqs,"vector compare equal quadword","not implemented",arch15
+vchq,"vector compare high quadword","not implemented",arch15
+vchqs,"vector compare high quadword","not implemented",arch15
+vchlq,"vector compare high logical quadword","not implemented",arch15
+vchlqs,"vector compare high logical quadword","not implemented",arch15
+vclzq,"vector count leading zeros quadword","not implemented",arch15
+vctzq,"vector count trailing zeros quadword","not implemented",arch15
+vlcq,"vector load complement quadword","not implemented",arch15
+vlpq,"vector load positive quadword","not implemented",arch15
+vmxq,"vector maximum quadword","not implemented",arch15
+vmxlq,"vector maximum logical quadword","not implemented",arch15
+vmnq,"vector minimum quadword","not implemented",arch15
+vmnlq,"vector minimum logical quadword","not implemented",arch15
+vmalg,"vector multiply and add low doubleword","not implemented",arch15
+vmalq,"vector multiply and add low quadword","not implemented",arch15
+vmahg,"vector multiply and add high doubleword","not implemented",arch15
+vmahq,"vector multiply and add high quadword","not implemented",arch15
+vmalhg,"vector multiply and add logical high doubleword","not implemented",arch15
+vmalhq,"vector multiply and add logical high quadword","not implemented",arch15
+vmaeg,"vector multiply and add even doubleword","not implemented",arch15
+vmaleg,"vector multiply and add logical even doubleword","not implemented",arch15
+vmaog,"vector multiply and add odd doubleword","not implemented",arch15
+vmalog,"vector multiply and add logical odd doubleword","not implemented",arch15
+vmhg,"vector multiply high doubleword","not implemented",arch15
+vmhq,"vector multiply high quadword","not implemented",arch15
+vmlhg,"vector multiply logical high doubleword","not implemented",arch15
+vmlhq,"vector multiply logical high quadword","not implemented",arch15
+vmlg,"vector multiply low doubleword","not implemented",arch15
+vmlq,"vector multiply low quadword","not implemented",arch15
+vmeg,"vector multiply even doubleword","not implemented",arch15
+vmleg,"vector multiply logical even doubleword","not implemented",arch15
+vmog,"vector multiply odd doubleword","not implemented",arch15
+vmlog,"vector multiply logical odd doubleword","not implemented",arch15
+vuphg,"vector unpack high doubleword","not implemented",arch15
+vuplhg,"vector unpack logical high doubleword","not implemented",arch15
+vuplg,"vector unpack low doubleword","not implemented",arch15
+vupllg,"vector unpack logical low doubleword","not implemented",arch15

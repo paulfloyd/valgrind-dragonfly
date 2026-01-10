@@ -12,7 +12,7 @@
 
    This program is free software; you can redistribute it and/or
    modify it under the terms of the GNU General Public License as
-   published by the Free Software Foundation; either version 2 of the
+   published by the Free Software Foundation; either version 3 of the
    License, or (at your option) any later version.
 
    This program is distributed in the hope that it will be useful, but
@@ -21,14 +21,12 @@
    General Public License for more details.
 
    You should have received a copy of the GNU General Public License
-   along with this program; if not, write to the Free Software
-   Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
-   02111-1307, USA.
+   along with this program; if not, see <http://www.gnu.org/licenses/>.
 
    The GNU General Public License is contained in the file COPYING.
 */
 
-#if defined(VGO_linux) || defined(VGO_solaris) || defined(VGO_dragonfly)
+#if defined(VGO_linux) || defined(VGO_solaris) || defined(VGO_freebsd) || defined(VGO_dragonfly)
 
 #include "pub_core_basics.h"
 #include "pub_core_vki.h"
@@ -41,7 +39,9 @@
 #include "pub_core_libcfile.h"      // VG_(open) et al
 #include "pub_core_machine.h"       // VG_ELF_CLASS (XXX: which should be moved)
 #include "pub_core_mallocfree.h"    // VG_(malloc), VG_(free)
+#include "pub_core_vkiscnums.h"
 #include "pub_core_syscall.h"       // VG_(strerror)
+#include "pub_core_clientstate.h"
 #include "pub_core_ume.h"           // self
 
 #include "priv_ume.h"
@@ -513,8 +513,8 @@ Bool VG_(match_ELF)(const void *hdr, SizeT len)
      required.  mapelf() returns the address just beyond the end of
      the furthest-along mapping it creates.  The executable is mapped
      starting at EBASE, which is usually read from it (eg, 0x8048000
-     etc) except if it's a PIE, in which case I'm not sure what
-     happens.
+     etc) except if it's a PIE, in which case aspacem is queried for
+     the first adequately sized segment.
 
      The returned address is recorded in info->brkbase as the start
      point of the brk (data) segment, as it is traditional to place
@@ -566,10 +566,8 @@ Int VG_(load_ELF)(Int fd, const HChar* name, /*MOD*/ExeInfo* info)
       return VKI_ENOEXEC;
 
    /* The kernel maps position-independent executables at TASK_SIZE*2/3;
-      duplicate this behavior as close as we can. */
+      for us it's good enough to just load it somewhere with enough free space. */
    if (e->e.e_type == ET_DYN && ebase == 0) {
-      ebase = VG_PGROUNDDN(info->exe_base 
-                           + (info->exe_end - info->exe_base) * 2 / 3);
       /* We really don't want to load PIEs at zero or too close.  It
          works, but it's unrobust (NULL pointer reads and writes
          become legit, which is really bad) and causes problems for
@@ -582,13 +580,19 @@ Int VG_(load_ELF)(Int fd, const HChar* name, /*MOD*/ExeInfo* info)
       /* Later .. on mips64 we can't use 0x108000, because mapelf will
          fail. */
 #     if defined(VGP_mips64_linux)
+      ebase = VG_PGROUNDDN(info->exe_base
+                           + (info->exe_end - info->exe_base) * 2 / 3);
       if (ebase < 0x100000)
          ebase = 0x100000;
 #     else
-      vg_assert(VKI_PAGE_SIZE >= 4096); /* stay sane */
-      ESZ(Addr) hacky_load_address = 0x100000 + 8 * VKI_PAGE_SIZE;
-      if (ebase < hacky_load_address)
-         ebase = hacky_load_address;
+      Bool ok = False;
+      ebase = VG_(am_get_advisory_client_simple)( 0, e->p->p_filesz, &ok );
+
+      if (!ok) {
+         VG_(printf)( "Cannot find segment large enough to contain %llx bytes\n", (ULong)e->p->p_filesz );
+         return VKI_ENOMEM;
+      }
+
 #     endif
 
 #     if defined(VGO_solaris)
@@ -644,9 +648,9 @@ Int VG_(load_ELF)(Int fd, const HChar* name, /*MOD*/ExeInfo* info)
          VG_(pread)(fd, buf, ph->p_filesz, ph->p_offset);
          buf[ph->p_filesz] = '\0';
 
-#if defined(VGP_x86_dragonfly)
+#if defined(VGP_x86_freebsd) || defined(VGP_x86_dragonfly)
          sres._isError = True;
-         /* Hack.  Dragonfly's kernel overloads the interpreter name. */
+         /* Hack.  FreeBSD's kernel overloads the interpreter name. */
          if (VG_(strcmp)(buf, "/libexec/ld-elf.so.1") == 0 ||
              VG_(strcmp)(buf, "/usr/libexec/ld-elf.so.1") == 0) {
             sres = VG_(open)("/libexec/ld-elf32.so.1", VKI_O_RDONLY, 0);
@@ -654,6 +658,7 @@ Int VG_(load_ELF)(Int fd, const HChar* name, /*MOD*/ExeInfo* info)
          if (sr_isError(sres))
 #endif
          sres = VG_(open)(buf, VKI_O_RDONLY, 0);
+         //sres = VG_(open)("/usr/home/paulf/build/src/obj/usr/home/paulf/build/src/amd64.amd64/libexec/rtld-elf/ld-elf.so.1.full", VKI_O_RDONLY, 0);
          if (sr_isError(sres)) {
             VG_(printf)("valgrind: m_ume.c: can't open interpreter\n");
             VG_(exit)(1);
@@ -811,7 +816,7 @@ Int VG_(load_ELF)(Int fd, const HChar* name, /*MOD*/ExeInfo* info)
             just put it anywhere.
       */
 
-#if 0 /* Do a fixed address mapping instead */
+#if !defined(VGO_dragonfly) /* Do a fixed address mapping instead */
       if (interp_addr == 0) {
          mreq.rkind = MAny;
          mreq.start = 0;
@@ -832,6 +837,7 @@ Int VG_(load_ELF)(Int fd, const HChar* name, /*MOD*/ExeInfo* info)
          /*NOTREACHED*/
       }
 #else
+      // FIXME PJF what the heck is this?
       advised = (Addr)0x0000000800401000;
 #endif
 
@@ -881,10 +887,16 @@ Int VG_(load_ELF)(Int fd, const HChar* name, /*MOD*/ExeInfo* info)
    VG_(free)(e->p);
    VG_(free)(e);
 
+   /* Get hold of a file descriptor which refers to the client
+      executable.  This is needed for attaching to GDB. */
+   SysRes res = VG_(dup)(fd);
+   if (!sr_isError(res))
+      VG_(cl_exec_fd) = sr_Res(res);
+
    return 0;
 }
 
-#endif // defined(VGO_linux) || defined(VGO_solaris) || defined(VGO_dragonfly)
+#endif // defined(VGO_linux) || defined(VGO_solaris) || defined(VGO_freebsd) || defined(VGO_dragonfly)
 
 /*--------------------------------------------------------------------*/
 /*--- end                                                          ---*/

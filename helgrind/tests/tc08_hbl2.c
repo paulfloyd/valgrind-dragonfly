@@ -24,6 +24,9 @@
 
 #undef PLAT_x86_darwin
 #undef PLAT_amd64_darwin
+#undef PLAT_x86_freebsd
+#undef PLAT_amd64_freebsd
+#undef PLAT_arm64_freebsd
 #undef PLAT_x86_dragonfly
 #undef PLAT_amd64_dragonfly
 #undef PLAT_x86_linux
@@ -35,6 +38,7 @@
 #undef PLAT_s390x_linux
 #undef PLAT_mips32_linux
 #undef PLAT_mips64_linux
+#undef PLAT_riscv64_linux
 #undef PLAT_x86_solaris
 #undef PLAT_amd64_solaris
 
@@ -42,6 +46,12 @@
 #  define PLAT_x86_darwin 1
 #elif defined(__APPLE__) && defined(__x86_64__)
 #  define PLAT_amd64_darwin 1
+#elif defined(__FreeBSD__) && defined(__i386__)
+#  define PLAT_x86_freebsd 1
+#elif defined(__FreeBSD__) && defined(__amd64__)
+#  define PLAT_amd64_freebsd 1
+#elif defined(__FreeBSD__) && defined(__aarch64__)
+#  define PLAT_arm64_freebsd 1
 #elif defined(__DragonFly__) && defined(__i386__)
 #  define PLAT_x86_dragonfly 1
 #elif defined(__DragonFly__) && defined(__amd64__)
@@ -66,6 +76,10 @@
 #else
 #  define PLAT_mips32_linux 1
 #endif
+#elif defined(__linux__) && defined(__nanomips__)
+#  define PLAT_nanomips_linux 1
+#elif defined(__linux__) && defined(__riscv) && (__riscv_xlen == 64)
+#  define PLAT_riscv64_linux 1
 #elif defined(__sun__) && defined(__i386__)
 #  define PLAT_x86_solaris 1
 #elif defined(__sun__) && defined(__x86_64__)
@@ -76,6 +90,7 @@
 #if defined(PLAT_amd64_linux) || defined(PLAT_x86_linux) \
     || defined(PLAT_amd64_darwin) || defined(PLAT_x86_darwin) \
     || defined(PLAT_amd64_solaris) || defined(PLAT_x86_solaris) \
+    || defined(PLAT_amd64_freebsd) || defined(PLAT_x86_freebsd) \
     || defined(PLAT_amd64_dragonfly) || defined(PLAT_x86_dragonfly)
 #  define INC(_lval,_lqual)	     \
       __asm__ __volatile__ ( \
@@ -103,7 +118,7 @@
       : /*out*/ : /*in*/ "r"(&(_lval))       \
       : /*trash*/ "r8", "r9", "cc", "memory" \
   );
-#elif defined(PLAT_arm64_linux)
+#elif defined(PLAT_arm64_linux) || defined(PLAT_arm64_freebsd)
 #  define INC(_lval,_lqual) \
   __asm__ __volatile__( \
       "1:\n"                                 \
@@ -136,6 +151,25 @@
       "        beqz  $t1, 1b\n"                     \
       : /*out*/ : /*in*/ "r"(&(_lval))              \
       : /*trash*/ "t0", "t1", "memory"              \
+        )
+#elif defined(PLAT_nanomips_linux)
+#  define INC(_lval,_lqual)                         \
+     __asm__ __volatile__ (                         \
+      "1:\n"                                        \
+      "        move $t0, %0\n"                      \
+      "        ll $t1, 0($t0)\n"                    \
+      "        addiu $t1, $t1, 1\n"                 \
+      "        sc $t1, 0($t0)\n"                    \
+      "        beqc $t1, $zero, 1b\n"               \
+      : /*out*/ : /*in*/ "r"(&(_lval))              \
+      : /*trash*/ "$t0", "$t1", "memory"            \
+   )
+#elif defined(PLAT_riscv64_linux)
+#  define INC(_lval,_lqual)                         \
+     __asm__ __volatile__ (                         \
+      "        amoadd.w zero, %1, (%0)\n"           \
+      : /*out*/ : /*in*/ "r"(&(_lval)), "r"(1)      \
+      : /*trash*/ "memory"                          \
         )
 #else
 #  error "Fix Me for this platform"

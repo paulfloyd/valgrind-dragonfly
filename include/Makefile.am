@@ -47,12 +47,16 @@ nobase_pkginclude_HEADERS = \
 	pub_tool_xtmemory.h		\
 	valgrind.h			\
 	vki/vki-linux.h			\
+	vki/vki-freebsd.h		\
 	vki/vki-dragonfly.h		\
 	vki/vki-darwin.h		\
 	vki/vki-solaris.h		\
 	vki/vki-solaris-repcache.h	\
+	vki/vki-machine-types-amd64-freebsd.h	\
+	vki/vki-machine-types-arm64-freebsd.h	\
+	vki/vki-machine-types-x86-freebsd.h	\
 	vki/vki-machine-types-amd64-dragonfly.h	\
-	vki/vki-machine-types-x86-dragonfly.h	\
+	vki/vki-machine-types-x86-dragonfly.h	
 	vki/vki-posixtypes-amd64-linux.h \
 	vki/vki-posixtypes-arm64-linux.h \
 	vki/vki-posixtypes-ppc32-linux.h \
@@ -62,29 +66,41 @@ nobase_pkginclude_HEADERS = \
 	vki/vki-posixtypes-s390x-linux.h \
 	vki/vki-posixtypes-mips32-linux.h \
 	vki/vki-posixtypes-mips64-linux.h \
+	vki/vki-posixtypes-nanomips-linux.h \
+	vki/vki-posixtypes-riscv64-linux.h \
 	vki/vki-amd64-linux.h		\
 	vki/vki-arm64-linux.h		\
 	vki/vki-ppc32-linux.h		\
 	vki/vki-ppc64-linux.h		\
 	vki/vki-x86-linux.h		\
+	vki/vki-amd64-freebsd.h		\
+	vki/vki-arm64-freebsd.h		\
+	vki/vki-x86-freebsd.h		\
 	vki/vki-amd64-dragonfly.h		\
 	vki/vki-x86-dragonfly.h		\
 	vki/vki-arm-linux.h		\
 	vki/vki-s390x-linux.h		\
 	vki/vki-mips32-linux.h		\
 	vki/vki-mips64-linux.h		\
+	vki/vki-nanomips-linux.h	\
+	vki/vki-riscv64-linux.h		\
 	vki/vki-scnums-amd64-linux.h	\
 	vki/vki-scnums-arm64-linux.h	\
 	vki/vki-scnums-ppc32-linux.h	\
 	vki/vki-scnums-ppc64-linux.h	\
 	vki/vki-scnums-x86-linux.h	\
+	vki/vki-scnums-freebsd.h	\
 	vki/vki-scnums-dragonfly.h	\
 	vki/vki-scnums-arm-linux.h	\
 	vki/vki-scnums-s390x-linux.h	\
 	vki/vki-scnums-mips32-linux.h	\
 	vki/vki-scnums-mips64-linux.h	\
+	vki/vki-scnums-nanomips-linux.h	\
+	vki/vki-scnums-riscv64-linux.h	\
 	vki/vki-scnums-darwin.h         \
 	vki/vki-scnums-solaris.h	\
+	vki/vki-scnums-shared-linux.h	\
+	vki/vki-scnums-32bit-linux.h	\
 	vki/vki-xen.h                   \
 	vki/vki-xen-domctl.h		\
 	vki/vki-xen-evtchn.h		\
@@ -99,4 +115,6 @@ nobase_pkginclude_HEADERS = \
 	vki/vki-xen-version.h		\
 	vki/vki-xen-xsm.h		\
 	vki/vki-xen-x86.h		\
-	vki/vki-linux-drm.h
+	vki/vki-linux-drm.h		\
+	vki/vki-linux-io_uring.h	\
+	vki/vki-linux-landlock.h

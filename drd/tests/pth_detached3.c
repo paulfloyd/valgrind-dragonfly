@@ -4,8 +4,9 @@
 #include <errno.h>
 #include <pthread.h>
 #include <stdio.h>
+#include <stdint.h>
 
-#if defined(VGO_dragonfly)
+#if defined(VGO_freebsd) || defined(VGO_dragonfly)
 #include <sys/types.h>
 #endif
 
@@ -25,10 +26,10 @@ int main(int argc, char** argv)
   pthread_detach(thread);
 
   /* Invoke pthread_detach() with an invalid thread ID. */
-#ifdef VGO_dragonfly
+#ifdefined(VGO_freebsd) || defined(VGO_dragonfly)
   pthread_detach((pthread_t)12345);
 #else
-  pthread_detach(thread + 8);
+  pthread_detach((pthread_t)((uintptr_t)thread + 8));
 #endif
 
   fprintf(stderr, "Finished.\n");

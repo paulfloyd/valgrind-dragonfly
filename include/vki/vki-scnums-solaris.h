@@ -12,7 +12,7 @@
 
    This program is free software; you can redistribute it and/or
    modify it under the terms of the GNU General Public License as
-   published by the Free Software Foundation; either version 2 of the
+   published by the Free Software Foundation; either version 3 of the
    License, or (at your option) any later version.
 
    This program is distributed in the hope that it will be useful, but
@@ -21,9 +21,7 @@
    General Public License for more details.
 
    You should have received a copy of the GNU General Public License
-   along with this program; if not, write to the Free Software
-   Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
-   02111-1307, USA.
+   along with this program; if not, see <http://www.gnu.org/licenses/>.
 
    The GNU General Public License is contained in the file COPYING.
 */
@@ -34,6 +32,8 @@
 
 #ifndef __VKI_SCNUMS_SOLARIS_H
 #define __VKI_SCNUMS_SOLARIS_H
+
+#include "config.h"
 
 /* Note: Basic information about Solaris syscalls can be found in the kernel
    source file uts/common/os/sysent.c.
@@ -180,6 +180,9 @@
 #if defined(SOLARIS_UUIDSYS_SYSCALL)
 #define __NR_uuidsys                    SYS_uuidsys
 #endif /* SOLARIS_UUIDSYS_SYSCALL */
+#if defined(HAVE_MREMAP)
+#define __NR_mremap                     SYS_mremap
+#endif /* HAVE_MREMAP */
 #define __NR_mmapobj                    SYS_mmapobj
 #define __NR_setrlimit                  SYS_setrlimit
 #define __NR_getrlimit                  SYS_getrlimit
@@ -302,7 +305,7 @@
 //#define __NR_sockconfig                 SYS_sockconfig
 //#define __NR_ntp_gettime                SYS_ntp_gettime
 //#define __NR_ntp_adjtime                SYS_ntp_adjtime
-//#define __NR_lwp_mutex_unlock           SYS_lwp_mutex_unlock
+#define __NR_lwp_mutex_unlock           SYS_lwp_mutex_unlock
 //#define __NR_lwp_mutex_trylock          SYS_lwp_mutex_trylock
 #define __NR_lwp_mutex_register         SYS_lwp_mutex_register
 //#define __NR_cladm                      SYS_cladm

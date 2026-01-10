@@ -135,6 +135,8 @@ typedef union {
 
 static sigjmp_buf catchpoint;
 
+static char state[108];
+
 static void handle_sigill(int signum)
 {
    siglongjmp(catchpoint, 1);
@@ -634,7 +636,6 @@ while (<>)
 
     my $stateargnum = $argnum++;
 
-    print qq|   char state\[108\];\n|;
     print qq|\n|;
     print qq|   if (sigsetjmp(catchpoint, 1) == 0)\n|;
     print qq|   \{\n|;
@@ -858,12 +859,15 @@ while (<>)
     print qq|$prefix\"m\" \(state[0]\)\n|;
 
     $prefix = "         : ";
+    my %clobber_added;
 
-    foreach my $arg (@presets, @args)
+    foreach my $arg (@presets, @results, @args)
     {
-        if ($arg->{register} && $arg->{type} ne "st")
+        my $register = $arg->{register};
+
+        if ($register && $arg->{type} ne "st" && !$clobber_added{$register}++)
         {
-            print qq|$prefix\"$arg->{register}\"|;
+            print qq|$prefix\"$register\"|;
             $prefix = ", ";
         }
     }

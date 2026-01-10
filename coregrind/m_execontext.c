@@ -12,7 +12,7 @@
 
    This program is free software; you can redistribute it and/or
    modify it under the terms of the GNU General Public License as
-   published by the Free Software Foundation; either version 2 of the
+   published by the Free Software Foundation; either version 3 of the
    License, or (at your option) any later version.
 
    This program is distributed in the hope that it will be useful, but
@@ -21,9 +21,7 @@
    General Public License for more details.
 
    You should have received a copy of the GNU General Public License
-   along with this program; if not, write to the Free Software
-   Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
-   02111-1307, USA.
+   along with this program; if not, see <http://www.gnu.org/licenses/>.
 
    The GNU General Public License is contained in the file COPYING.
 */
@@ -354,7 +352,7 @@ static void resize_ec_htab ( void )
    SizeT        new_size;
    ExeContext** new_ec_htab;
 
-   vg_assert(ec_htab_size_idx >= 0 && ec_htab_size_idx < N_EC_PRIMES);
+   vg_assert(ec_htab_size_idx < N_EC_PRIMES);
    if (ec_htab_size_idx == N_EC_PRIMES-1)
       return; /* out of primes - can't resize further */
 
@@ -548,7 +546,7 @@ static ExeContext* record_ExeContext_wrk2 ( const Addr* ips, UInt n_ips )
 
    /* Resize the hash table, maybe? */
    if ( ((ULong)ec_totstored) > ((ULong)ec_htab_size) ) {
-      vg_assert(ec_htab_size_idx >= 0 && ec_htab_size_idx < N_EC_PRIMES);
+      vg_assert(ec_htab_size_idx < N_EC_PRIMES);
       if (ec_htab_size_idx < N_EC_PRIMES-1)
          resize_ec_htab();
    }

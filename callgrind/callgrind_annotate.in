@@ -1,4 +1,4 @@
-#! /usr/bin/perl -w
+#! /usr/bin/env perl
 ##--------------------------------------------------------------------##
 ##--- The cache simulation framework: instrumentation, recording   ---##
 ##--- and results printing.                                        ---##
@@ -17,7 +17,7 @@
 #
 #  This program is free software; you can redistribute it and/or
 #  modify it under the terms of the GNU General Public License as
-#  published by the Free Software Foundation; either version 2 of the
+#  published by the Free Software Foundation; either version 3 of the
 #  License, or (at your option) any later version.
 #
 #  This program is distributed in the hope that it will be useful, but
@@ -26,9 +26,7 @@
 #  General Public License for more details.
 #
 #  You should have received a copy of the GNU General Public License
-#  along with this program; if not, write to the Free Software
-#  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
-#  02111-1307, USA.
+#  along with this program; if not, see <http://www.gnu.org/licenses/>.
 #
 #  The GNU General Public License is contained in the file COPYING.
 
@@ -61,6 +59,7 @@
 #    commifying (halves the number of commify calls)            1.68s --> 1.47s
 
 use strict;
+use warnings;
 
 #----------------------------------------------------------------------------
 # Overview: the running example in the comments is for:
@@ -141,11 +140,11 @@ my $default_threshold = 99;
 my $single_threshold  = $default_threshold;
 
 # If on, show a percentage for each non-zero count.
-my $show_percs = 0;
+my $show_percs = 1;
 
 # If on, automatically annotates all files that are involved in getting over
 # all the threshold counts.
-my $auto_annotate = 0;
+my $auto_annotate = 1;
 
 # Number of lines to show around each annotated line.
 my $context = 8;
@@ -207,12 +206,15 @@ usage: callgrind_annotate [options] [callgrind-out-file [source-files...]]
     -h --help             show this message
     --version             show version
     --show=A,B,C          only show figures for events A,B,C [all]
-    --sort=A,B,C          sort columns by events A,B,C [event column order]
     --threshold=<0--100>  percentage of counts (of primary sort event) we
                           are interested in [$default_threshold%]
-    --show-percs=yes|no   show a percentage for each non-zero count
+    --sort=A,B,C          sort columns by events A,B,C [event column order]
+                          Each event can optionally be followed by a :
+                          and a threshold percentage. If some event specific
+                          threshold are given, --threshold value is ignored.
+    --show-percs=yes|no   show a percentage for each non-zero count [yes]
     --auto=yes|no         annotate all source files containing functions
-                          that helped reach the event count threshold [no]
+                          that helped reach the event count threshold [yes]
     --context=N           print N lines of context before and after
                           annotated lines [8]
     --inclusive=yes|no    add subroutine costs to functions calls [no]
@@ -419,10 +421,8 @@ sub read_input_file()
     # Read header
     while(<INPUTFILE>) {
 
-      # remove comments
-      s/#.*$//;
-
-      if (/^$/) { ; }
+      # Skip comments and empty lines.
+      if (/^\s*$/ || /^\#/) { ; }
 
       elsif (/^version:\s*(\d+)/) {
 	# Can't read format with major version > 1
@@ -509,6 +509,10 @@ sub read_input_file()
             push(@thresholds, 0);
         }
         $thresholds[0] = $single_threshold;
+    } else {
+        # setting $single_threshold to 0 to ensure the 'per event'
+        # threshold logic is used.
+        $single_threshold = 0;
     }
 
     # Current directory, used to strip from file names if absolute
@@ -535,9 +539,11 @@ sub read_input_file()
 
     # Read body of input file.
     while (<INPUTFILE>) {
+        # Skip comments and empty lines.
+        next if /^\s*$/ || /^\#/;
+
 	$prev_line_num = $curr_line_num;
 
-        s/#.*$//;   # remove comments
         s/^\+(\d+)/$prev_line_num+$1/e;
         s/^\-(\d+)/$prev_line_num-$1/e;
         s/^\*/$prev_line_num/e;
@@ -640,9 +646,6 @@ sub read_input_file()
             $curr_file_ind_CCs = {} unless (defined $curr_file_ind_CCs);
             $curr_fn_CC = $fn_totals{$curr_name};
             $curr_fn_CC = [] unless (defined $curr_fn_CC);
-
-        } elsif (s/^\s*$//) {
-            # blank, do nothing
 
         } elsif (s/^cob=(.*)$//) {
 	  $curr_cobj = uncompressed_name("ob",$1);
@@ -921,7 +924,7 @@ sub print_summary_and_fn_totals ()
 
     # Sort function names into order dictated by --sort option.
     @fn_fullnames = sort {
-        mycmp($fn_totals{$a}, $fn_totals{$b})
+        mycmp($fn_totals{$a}, $fn_totals{$b}) || $a cmp $b
     } @fn_fullnames;
 
 
@@ -939,17 +942,22 @@ sub print_summary_and_fn_totals ()
 
     # Print functions, stopping when the threshold has been reached.
     foreach my $fn_name (@fn_fullnames) {
-
-        # Stop when we've reached all the thresholds
-        my $reached_all_thresholds = 1;
-        foreach my $i (0 .. scalar @thresholds - 1) {
-            my $prop = $curr_totals[$i] * 100;
-	    if ($summary_CC->[$sort_order[$i]] >0) {
-	      $prop = $prop / $summary_CC->[$sort_order[$i]];
-	    }
-            $reached_all_thresholds &&= ($prop >= $thresholds[$i]);
+        # if $single_threshold is 100 the user want to see everything,
+        # so do not enter the filtering logic, as truncation can cause
+        # some functions to not be shown.
+        if ($single_threshold < 100) {
+            # Stop when we've reached all the thresholds
+            my $reached_all_thresholds = 1;
+            foreach my $i (0 .. scalar @thresholds - 1) {
+                my $prop = $curr_totals[$i] * 100;
+                if (defined $summary_CC->[$sort_order[$i]] &&
+                    $summary_CC->[$sort_order[$i]] >0) {
+                    $prop = $prop / $summary_CC->[$sort_order[$i]];
+                }
+                $reached_all_thresholds &&= ($prop >= $thresholds[$i]);
+            }
+            last if $reached_all_thresholds;
         }
-        last if $reached_all_thresholds;
 
 	if ($tree_caller || $tree_calling) { print "\n"; }
 

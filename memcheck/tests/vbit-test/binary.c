@@ -8,7 +8,7 @@
 
    This program is free software; you can redistribute it and/or
    modify it under the terms of the GNU General Public License as
-   published by the Free Software Foundation; either version 2 of the
+   published by the Free Software Foundation; either version 3 of the
    License, or (at your option) any later version.
 
    This program is distributed in the hope that it will be useful, but
@@ -17,9 +17,7 @@
    General Public License for more details.
 
    You should have received a copy of the GNU General Public License
-   along with this program; if not, write to the Free Software
-   Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
-   02111-1307, USA.
+   along with this program; if not, see <http://www.gnu.org/licenses/>.
 
    The GNU General Public License is contained in the file COPYING.
 */
@@ -40,6 +38,7 @@ and_combine(vbits_t v1, vbits_t v2, value_t val2, int invert_val2)
 
    if (invert_val2) {
       switch (v2.num_bits) {
+      case 1:  val2.u32 = ~val2.u32 & 1;      break;
       case 8:  val2.u8  = ~val2.u8  & 0xff;   break;
       case 16: val2.u16 = ~val2.u16 & 0xffff; break;
       case 32: val2.u32 = ~val2.u32;          break;
@@ -50,6 +49,9 @@ and_combine(vbits_t v1, vbits_t v2, value_t val2, int invert_val2)
    }
 
    switch (v2.num_bits) {
+   case 1:
+      new.bits.u32 = (v1.bits.u32 & ~v2.bits.u32 & val2.u32) & 1;
+      break;
    case 8:
       new.bits.u8  = (v1.bits.u8 & ~v2.bits.u8  & val2.u8)  & 0xff;
       break;
@@ -362,6 +364,38 @@ check_result_for_binary(const irop_t *op, const test_data_t *data)
          panic(__func__);
       }
       break;
+   case UNDEF_GT_S_8x16:
+      expected_vbits = cmp_gt_vbits(1/* is_signed */, 8 /* bits_per_element */, 16 /* element_count */,
+                                    opnd1->vbits, opnd2->vbits, opnd1->value, opnd2->value);
+      break;
+   case UNDEF_GT_S_16x8:
+      expected_vbits = cmp_gt_vbits(1/* is_signed */, 16 /* bits_per_element */, 8 /* element_count */,
+                                    opnd1->vbits, opnd2->vbits, opnd1->value, opnd2->value);
+      break;
+   case UNDEF_GT_S_32x4:
+      expected_vbits = cmp_gt_vbits(1/* is_signed */, 32 /* bits_per_element */, 4 /* element_count */,
+                                    opnd1->vbits, opnd2->vbits, opnd1->value, opnd2->value);
+      break;
+   case UNDEF_GT_S_64x2:
+      expected_vbits = cmp_gt_vbits(1/* is_signed */, 64 /* bits_per_element */, 2 /* element_count */,
+                                    opnd1->vbits, opnd2->vbits, opnd1->value, opnd2->value);
+      break;
+   case UNDEF_GT_U_8x16:
+      expected_vbits = cmp_gt_vbits(0/* is_signed */, 8 /* bits_per_element */, 16 /* element_count */,
+                                    opnd1->vbits, opnd2->vbits, opnd1->value, opnd2->value);
+      break;
+   case UNDEF_GT_U_16x8:
+      expected_vbits = cmp_gt_vbits(0/* is_signed */, 16 /* bits_per_element */, 8 /* element_count */,
+                                    opnd1->vbits, opnd2->vbits, opnd1->value, opnd2->value);
+      break;
+   case UNDEF_GT_U_32x4:
+      expected_vbits = cmp_gt_vbits(0/* is_signed */, 32 /* bits_per_element */, 4 /* element_count */,
+                                    opnd1->vbits, opnd2->vbits, opnd1->value, opnd2->value);
+      break;
+   case UNDEF_GT_U_64x2:
+      expected_vbits = cmp_gt_vbits(0/* is_signed */, 64 /* bits_per_element */, 2 /* element_count */,
+                                    opnd1->vbits, opnd2->vbits, opnd1->value, opnd2->value);
+      break;
 
    default:
       panic(__func__);
@@ -427,6 +461,7 @@ all_bits_zero_value(unsigned num_bits)
    switch (num_bits) {
    case 8:  val.u8  = 0; break;
    case 16: val.u16 = 0; break;
+   case 1:
    case 32: val.u32 = 0; break;
    case 64: val.u64 = 0; break;
    default:
@@ -442,6 +477,7 @@ all_bits_one_value(unsigned num_bits)
    value_t val;
 
    switch (num_bits) {
+   case 1:  val.u32 = 1;      break;
    case 8:  val.u8  = 0xff;   break;
    case 16: val.u16 = 0xffff; break;
    case 32: val.u32 = ~0u;    break;

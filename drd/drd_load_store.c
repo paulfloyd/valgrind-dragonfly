@@ -1,11 +1,11 @@
 /*
   This file is part of drd, a thread error detector.
 
-  Copyright (C) 2006-2017 Bart Van Assche <bvanassche@acm.org>.
+  Copyright (C) 2006-2020 Bart Van Assche <bvanassche@acm.org>.
 
   This program is free software; you can redistribute it and/or
   modify it under the terms of the GNU General Public License as
-  published by the Free Software Foundation; either version 2 of the
+  published by the Free Software Foundation; either version 3 of the
   License, or (at your option) any later version.
 
   This program is distributed in the hope that it will be useful, but
@@ -14,9 +14,7 @@
   General Public License for more details.
 
   You should have received a copy of the GNU General Public License
-  along with this program; if not, write to the Free Software
-  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
-  02111-1307, USA.
+  along with this program; if not, see <http://www.gnu.org/licenses/>.
 
   The GNU General Public License is contained in the file COPYING.
 */
@@ -51,10 +49,12 @@
 #define STACK_POINTER_OFFSET OFFSET_arm64_XSP
 #elif defined(VGA_s390x)
 #define STACK_POINTER_OFFSET OFFSET_s390x_r15
-#elif defined(VGA_mips32)
+#elif defined(VGA_mips32) || defined(VGA_nanomips)
 #define STACK_POINTER_OFFSET OFFSET_mips32_r29
 #elif defined(VGA_mips64)
 #define STACK_POINTER_OFFSET OFFSET_mips64_r29
+#elif defined(VGA_riscv64)
+#define STACK_POINTER_OFFSET OFFSET_riscv64_x2
 #else
 #error Unknown architecture.
 #endif
@@ -68,7 +68,7 @@ static Bool s_first_race_only      = False;
 
 /* Function definitions. */
 
-Bool DRD_(get_check_stack_accesses)()
+Bool DRD_(get_check_stack_accesses)(void)
 {
    return s_check_stack_accesses;
 }
@@ -79,7 +79,7 @@ void DRD_(set_check_stack_accesses)(const Bool c)
    s_check_stack_accesses = c;
 }
 
-Bool DRD_(get_first_race_only)()
+Bool DRD_(get_first_race_only)(void)
 {
    return s_first_race_only;
 }

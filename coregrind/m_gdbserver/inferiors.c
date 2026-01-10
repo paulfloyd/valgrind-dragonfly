@@ -9,7 +9,7 @@
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
-   the Free Software Foundation; either version 2 of the License, or
+   the Free Software Foundation; either version 3 of the License, or
    (at your option) any later version.
 
    This program is distributed in the hope that it will be useful,
@@ -100,12 +100,12 @@ void add_thread (unsigned long thread_id, void *target_data, unsigned int gdb_id
    struct thread_info *new_thread
       = (struct thread_info *) malloc (sizeof (*new_thread));
 
-   VG_(memset) (new_thread, 0, sizeof (*new_thread));
+   memset (new_thread, 0, sizeof (*new_thread));
 
    new_thread->entry.id = thread_id;
 
    add_inferior_to_list (&all_threads, & new_thread->entry);
-  
+
    if (current_inferior == NULL)
       current_inferior = new_thread;
 
@@ -176,7 +176,7 @@ void clear_inferiors (void)
 }
 
 struct inferior_list_entry * find_inferior (struct inferior_list *list,
-                                            int (*func) 
+                                            int (*func)
                                               (struct inferior_list_entry *,
                                                void *),
                                             void *arg)
@@ -188,7 +188,7 @@ struct inferior_list_entry * find_inferior (struct inferior_list *list,
          return inf;
       inf = inf->next;
    }
-   
+
    return NULL;
 }
 
@@ -202,7 +202,7 @@ struct inferior_list_entry * find_inferior_id (struct inferior_list *list,
          return inf;
       inf = inf->next;
    }
-   
+
    return NULL;
 }
 

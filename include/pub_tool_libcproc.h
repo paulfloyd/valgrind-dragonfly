@@ -12,7 +12,7 @@
 
    This program is free software; you can redistribute it and/or
    modify it under the terms of the GNU General Public License as
-   published by the Free Software Foundation; either version 2 of the
+   published by the Free Software Foundation; either version 3 of the
    License, or (at your option) any later version.
 
    This program is distributed in the hope that it will be useful, but
@@ -21,9 +21,7 @@
    General Public License for more details.
 
    You should have received a copy of the GNU General Public License
-   along with this program; if not, write to the Free Software
-   Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
-   02111-1307, USA.
+   along with this program; if not, see <http://www.gnu.org/licenses/>.
 
    The GNU General Public License is contained in the file COPYING.
 */
@@ -72,7 +70,7 @@ extern Int  VG_(system) ( const HChar* cmd );
 extern Int  VG_(spawn)  ( const HChar *filename, const HChar **argv );
 extern Int  VG_(fork)   ( void);
 extern void VG_(execv)  ( const HChar* filename, const HChar** argv );
-extern Int  VG_(sysctl) ( Int *name, UInt namelen, void *oldp, SizeT *oldlenp, void *newp, SizeT newlen );
+extern Int  VG_(sysctl) ( Int *name, UInt namelen, void *oldp, SizeT *oldlenp, const void *newp, SizeT newlen );
 
 /* ---------------------------------------------------------------------
    Resource limits and capabilities
@@ -105,6 +103,16 @@ extern UInt VG_(read_millisecond_timer) ( void );
 
 extern Int  VG_(gettimeofday)(struct vki_timeval *tv, struct vki_timezone *tz);
 
+#  if defined(VGO_linux) || defined(VGO_solaris) || defined(VGO_freebsd)
+/* Get the clock value as specified by clk_id.  Asserts if unsuccessful.  */
+extern void VG_(clock_gettime)(struct vki_timespec *ts, vki_clockid_t clk_id);
+#  elif defined(VGO_darwin)
+  /* It seems clock_gettime is only available on recent Darwin versions.
+     For the moment, let's assume it is not available.  */
+#  else
+#    error "Unknown OS"
+#  endif
+
 // Returns the number of milliseconds of user cpu time we have used,
 // as reported by 'getrusage'.
 extern UInt VG_(get_user_milliseconds)(void);
@@ -115,6 +123,10 @@ extern UInt VG_(get_user_milliseconds)(void);
 
 typedef void (*vg_atfork_t)(ThreadId);
 extern void VG_(atfork)(vg_atfork_t pre, vg_atfork_t parent, vg_atfork_t child);
+
+#if defined(VGO_freebsd)
+extern Int VG_(getosreldate)(void);
+#endif
 
 
 #endif   // __PUB_TOOL_LIBCPROC_H

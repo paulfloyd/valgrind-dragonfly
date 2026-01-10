@@ -12,7 +12,7 @@
 
    This program is free software; you can redistribute it and/or
    modify it under the terms of the GNU General Public License as
-   published by the Free Software Foundation; either version 2 of the
+   published by the Free Software Foundation; either version 3 of the
    License, or (at your option) any later version.
 
    This program is distributed in the hope that it will be useful, but
@@ -21,9 +21,7 @@
    General Public License for more details.
 
    You should have received a copy of the GNU General Public License
-   along with this program; if not, write to the Free Software
-   Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
-   02111-1307, USA.
+   along with this program; if not, see <http://www.gnu.org/licenses/>.
 
    The GNU General Public License is contained in the file COPYING.
 */
@@ -338,6 +336,14 @@ struct vki_sigcontext {
 };
 
 //----------------------------------------------------------------------
+// From linux-5.0.0/arch/powerpc/include/uapi/asm/siginfo.h
+//----------------------------------------------------------------------
+
+#ifdef __powerpc64__
+# define __VKI_ARCH_SI_PREAMBLE_SIZE     (4 * sizeof(int))
+#endif
+
+//----------------------------------------------------------------------
 // From linux-2.6.13/include/asm-ppc64/mman.h
 //----------------------------------------------------------------------
 
@@ -371,6 +377,7 @@ struct vki_sigcontext {
 #define VKI_O_TRUNC           01000 /* not fcntl */
 #define VKI_O_APPEND          02000
 #define VKI_O_NONBLOCK        04000
+#define VKI_O_DIRECT        0400000
 #define VKI_O_LARGEFILE     0200000
 
 #define VKI_AT_FDCWD            -100

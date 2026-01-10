@@ -12,7 +12,7 @@
 
    This program is free software; you can redistribute it and/or
    modify it under the terms of the GNU General Public License as
-   published by the Free Software Foundation; either version 2 of the
+   published by the Free Software Foundation; either version 3 of the
    License, or (at your option) any later version.
 
    This program is distributed in the hope that it will be useful, but
@@ -21,9 +21,7 @@
    General Public License for more details.
 
    You should have received a copy of the GNU General Public License
-   along with this program; if not, write to the Free Software
-   Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
-   02111-1307, USA.
+   along with this program; if not, see <http://www.gnu.org/licenses/>.
 
    The GNU General Public License is contained in the file COPYING.
 */
@@ -36,6 +34,7 @@
 #include "pub_core_libcassert.h"
 #include "pub_core_syscall.h"
 #include "pub_core_libcsignal.h"    /* self */
+#include "pub_core_libcproc.h"
 
 #if !defined(VGO_solaris)
 #   define _VKI_MAXSIG (_VKI_NSIG - 1)
@@ -216,7 +215,7 @@ void VG_(sigcomplementset)( vki_sigset_t* dst, const vki_sigset_t* src )
 */
 Int VG_(sigprocmask)( Int how, const vki_sigset_t* set, vki_sigset_t* oldset)
 {
-#  if defined(VGO_linux) || defined(VGO_solaris) || defined(VGO_dragonfly)
+#  if defined(VGO_linux) || defined(VGO_solaris) || defined(VGO_freebsd)|| defined(VGO_dragonfly)
 #  if defined(__NR_rt_sigprocmask)
    SysRes res = VG_(do_syscall4)(__NR_rt_sigprocmask, 
                                  how, (UWord)set, (UWord)oldset, 
@@ -242,18 +241,28 @@ Int VG_(sigprocmask)( Int how, const vki_sigset_t* set, vki_sigset_t* oldset)
 #if defined(VGO_darwin)
 /* A helper function for sigaction on Darwin. */
 static 
-void darwin_signal_demux(void* a1, UWord a2, UWord a3, void* a4, void* a5) {
+void darwin_signal_demux(void* catcher, UWord infostyle, UWord sig, void* sinfo, void* uctx
+# if defined(VGA_arm64)
+, void* token
+# endif
+) {
    VG_(debugLog)(2, "libcsignal",
-                    "PRE  demux sig, a2 = %lu, signo = %lu\n", a2, a3);
-   if (a2 == 1)
-      ((void(*)(int))a1) (a3);
+                    "PRE  demux sig, infostyle = %s, signo = %lu\n", infostyle == VKI_UC_TRAD ? "TRAD" : "FLAVOR", sig);
+   if (infostyle == VKI_UC_TRAD)
+      ((void(*)(int))catcher) (sig);
    else
-      ((void(*)(int,void*,void*))a1) (a3,a4,a5);
+      ((void(*)(int,void*,void*))catcher) (sig, sinfo, uctx);
    VG_(debugLog)(2, "libcsignal",
-                    "POST demux sig, a2 = %lu, signo = %lu\n", a2, a3);
-   VG_(do_syscall2)(__NR_sigreturn, (UWord)a5, 0x1E);
+                    "POST demux sig, infostyle = %s, signo = %lu\n", infostyle == VKI_UC_TRAD ? "TRAD" : "FLAVOR", sig);
+# if defined(VGA_arm64)
+   VG_(do_syscall3)(__NR_sigreturn, (UWord)uctx, VKI_UC_FLAVOR, (UWord)token);
+   /* NOTREACHED */
+   __asm__ __volatile__("udf #0");
+# else
+   VG_(do_syscall2)(__NR_sigreturn, (UWord)uctx, VKI_UC_FLAVOR);
    /* NOTREACHED */
    __asm__ __volatile__("ud2");
+# endif
 }
 #endif
 
@@ -320,7 +329,13 @@ Int VG_(sigaction) ( Int signum,
                                  signum, (UWord)act, (UWord)oldact);
    return sr_isError(res) ? -1 : 0;
 
-#  elif defined(VGO_dragonfly)
+#  elif defined(VGO_freebsd)
+   SysRes res = VG_(do_syscall3)(__NR_sigaction,
+                                 signum, (UWord)act, (UWord)oldact);
+   return sr_isError(res) ? -1 : 0;
+
+
+#  elif defined(VGO_freebsd)
    SysRes res = VG_(do_syscall3)(__NR_sigaction,
                                  signum, (UWord)act, (UWord)oldact);
    return sr_isError(res) ? -1 : 0;
@@ -337,7 +352,7 @@ void
 VG_(convert_sigaction_fromK_to_toK)( const vki_sigaction_fromK_t* fromK,
                                      /*OUT*/vki_sigaction_toK_t* toK )
 {
-#  if defined(VGO_linux) || defined(VGO_solaris) || defined(VGO_dragonfly)
+#  if defined(VGO_linux) || defined(VGO_solaris) || defined(VGO_freebsd)|| defined(VGO_dragonfly)
    *toK = *fromK;
 #  elif defined(VGO_darwin)
    toK->ksa_handler = fromK->ksa_handler;
@@ -354,7 +369,7 @@ Int VG_(kill)( Int pid, Int signo )
 {
 #  if defined(VGO_linux) || defined(VGO_solaris)
    SysRes res = VG_(do_syscall2)(__NR_kill, pid, signo);
-#  elif defined(VGO_darwin) || defined(VGO_dragonfly)
+#  elif defined(VGO_darwin) || defined(VGO_freebsd)|| defined(VGO_dragonfly)
    SysRes res = VG_(do_syscall3)(__NR_kill,
                                  pid, signo, 1/*posix-compliant*/);
 #  else
@@ -393,7 +408,11 @@ Int VG_(tkill)( Int lwpid, Int signo )
 #     endif
    return sr_isError(res) ? -1 : 0;
 
-   
+#  elif defined(VGO_freebsd)
+   SysRes res;
+   res = VG_(do_syscall2)(__NR_thr_kill, lwpid, signo);
+   return sr_isError(res) ? -1 : 0;
+
 #  elif defined(VGO_dragonfly)
    SysRes res;
    res = VG_(do_syscall3)(__NR_lwp_kill, -1, lwpid, signo);
@@ -562,17 +581,17 @@ Int VG_(sigtimedwait_zero)( const vki_sigset_t *set, vki_siginfo_t *info )
    return sr_isError(res) ? -1 : sr_Res(res);
 }
 
-#elif defined(VGO_dragonfly)
+#elif defined(VGO_freebsd)|| defined(VGO_dragonfly)
+
 
 Int VG_(sigtimedwait_zero)( const vki_sigset_t *set, 
                             vki_siginfo_t *info )
 {
-  static const struct vki_timespec zero = { 0, 0 };
+   static const struct vki_timespec zero = { 0, 0 };
 
-  SysRes res = VG_(do_syscall3)(__NR_sigtimedwait, (UWord)set, (UWord)info,
-		  (UWord)&zero);
-
-  return sr_isError(res) ? -1 : sr_Res(res);
+   SysRes res = VG_(do_syscall3)(__NR_sigtimedwait, (UWord)set, (UWord)info,
+                                 (UWord)&zero);
+   return sr_isError(res) ? -1 : sr_Res(res);
 }
 
 #else

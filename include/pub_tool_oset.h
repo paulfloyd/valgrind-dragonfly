@@ -12,7 +12,7 @@
 
    This program is free software; you can redistribute it and/or
    modify it under the terms of the GNU General Public License as
-   published by the Free Software Foundation; either version 2 of the
+   published by the Free Software Foundation; either version 3 of the
    License, or (at your option) any later version.
 
    This program is distributed in the hope that it will be useful, but
@@ -21,9 +21,7 @@
    General Public License for more details.
 
    You should have received a copy of the GNU General Public License
-   along with this program; if not, write to the Free Software
-   Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
-   02111-1307, USA.
+   along with this program; if not, see <http://www.gnu.org/licenses/>.
 
    The GNU General Public License is contained in the file COPYING.
 */
@@ -100,7 +98,7 @@ typedef Word  (*OSetCmp_t)         ( const void* key, const void* elem );
 
 extern OSet* VG_(OSetWord_Create) ( Alloc_Fn_t alloc_fn, const HChar* cc,
                                     Free_Fn_t free_fn );
-extern void  VG_(OSetWord_Destroy) ( OSet* os );
+extern void  VG_(OSetWord_Destroy) ( OSet* t );
 
 /*--------------------------------------------------------------------*/
 /*--- Operations on OSets (UWord)                                  ---*/
@@ -142,12 +140,12 @@ extern void  VG_(OSetWord_Destroy) ( OSet* os );
 //   they will return False if VG_(OSetWord_Next)() is called without an
 //   intervening call to VG_(OSetWord_ResetIter)().
 
-extern Word  VG_(OSetWord_Size)         ( const OSet* os );
+extern Word  VG_(OSetWord_Size)         ( const OSet* t );
 extern void  VG_(OSetWord_Insert)       ( OSet* os, UWord val );
 extern Bool  VG_(OSetWord_Contains)     ( const OSet* os, UWord val );
 extern Bool  VG_(OSetWord_Remove)       ( OSet* os, UWord val );
 extern void  VG_(OSetWord_ResetIter)    ( OSet* os );
-extern Bool  VG_(OSetWord_Next)         ( OSet* os, /*OUT*/UWord* val );
+extern Bool  VG_(OSetWord_Next)         ( OSet* t, /*OUT*/UWord* val );
 
 
 /*--------------------------------------------------------------------*/

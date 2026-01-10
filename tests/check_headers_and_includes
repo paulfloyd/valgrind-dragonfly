@@ -42,18 +42,17 @@ my %coregrind_dirs = (
     );
 
 my %tool_dirs = (
-    "none" => 1,
-    "lackey" => 1,
-    "massif" => 1,
     "memcheck" => 1,
-    "drd" => 1,
-    "helgrind", => 1,
-    "callgrind" => 1,
     "cachegrind" => 1,
-    "shared" => 1,
+    "callgrind" => 1,
+    "helgrind", => 1,
+    "drd" => 1,
+    "massif" => 1,
+    "dhat" => 1,
+    "lackey" => 1,
+    "none" => 1,
     "exp-bbv" => 1,
-    "exp-dhat" => 1,
-    "exp-sgcheck" => 1
+    "shared" => 1,
     );
 
 my %dirs_to_ignore = (
@@ -63,8 +62,10 @@ my %dirs_to_ignore = (
     "Inst" => 1,            # the nightly scripts creates this
     "VEX" => 1,
     "docs" => 1,
+    "scripts" => 1,
     "auxprogs" => 1,
     "autom4te.cache" => 1,
+    "m4" => 1,
     "nightly" => 1,
     "perf" => 1,
     "tests" => 1,
@@ -74,10 +75,12 @@ my %dirs_to_ignore = (
     );
 
 my %tool_export_header = (
+    "dhat/dhat.h" => 1,
     "drd/drd.h" => 1,
     "helgrind/helgrind.h" => 1,
     "memcheck/memcheck.h" => 1,
-    "callgrind/callgrind.h" => 1
+    "callgrind/callgrind.h" => 1,
+    "cachegrind/cachegrind.h" => 1
     );
 
 my $usage=<<EOF;

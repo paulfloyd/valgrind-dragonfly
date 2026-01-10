@@ -7,11 +7,11 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2010-2017 Mozilla Inc
+   Copyright (C) 2010-2017 Mozilla Foundation
 
    This program is free software; you can redistribute it and/or
    modify it under the terms of the GNU General Public License as
-   published by the Free Software Foundation; either version 2 of the
+   published by the Free Software Foundation; either version 3 of the
    License, or (at your option) any later version.
 
    This program is distributed in the hope that it will be useful, but
@@ -20,9 +20,7 @@
    General Public License for more details.
 
    You should have received a copy of the GNU General Public License
-   along with this program; if not, write to the Free Software
-   Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
-   02111-1307, USA.
+   along with this program; if not, see <http://www.gnu.org/licenses/>.
 
    The GNU General Public License is contained in the file COPYING.
 */
@@ -92,7 +90,7 @@ void  VG_MINIMAL_LONGJMP(VG_MINIMAL_JMP_BUF(_env));
 
 
 #elif defined(VGP_amd64_linux) || defined(VGP_amd64_darwin) || \
-      defined(VGP_amd64_solaris) || defined(VGP_amd64_dragonfly)
+      defined(VGP_amd64_solaris) || defined(VGP_amd64_freebsd) || defined(VGP_amd64_dragonfly)
 
 #define VG_MINIMAL_JMP_BUF(_name)        ULong _name [16+1]
 __attribute__((returns_twice))
@@ -102,7 +100,7 @@ void  VG_MINIMAL_LONGJMP(VG_MINIMAL_JMP_BUF(_env));
 
 
 #elif defined(VGP_x86_linux) || defined(VGP_x86_darwin) || \
-      defined(VGP_x86_solaris) || defined(VGP_x86_dragonfly)
+      defined(VGP_x86_solaris) || defined(VGP_x86_freebsd) || defined(VGP_x86_dragonfly)
 
 #define VG_MINIMAL_JMP_BUF(_name)        UInt _name [8+1]
 __attribute__((returns_twice))
@@ -112,7 +110,7 @@ __attribute__((noreturn))
 __attribute__((regparm(1))) // ditto
 void  VG_MINIMAL_LONGJMP(VG_MINIMAL_JMP_BUF(_env));
 
-#elif defined(VGP_mips32_linux)
+#elif defined(VGP_mips32_linux) || defined(VGP_nanomips_linux)
 
 #define VG_MINIMAL_JMP_BUF(_name)        ULong _name [104 / sizeof(ULong)]
 __attribute__((returns_twice))
@@ -123,6 +121,30 @@ void  VG_MINIMAL_LONGJMP(VG_MINIMAL_JMP_BUF(_env));
 #elif defined(VGP_mips64_linux)
 
 #define VG_MINIMAL_JMP_BUF(_name)        ULong _name [168 / sizeof(ULong)]
+__attribute__((returns_twice))
+UWord VG_MINIMAL_SETJMP(VG_MINIMAL_JMP_BUF(_env));
+__attribute__((noreturn))
+void  VG_MINIMAL_LONGJMP(VG_MINIMAL_JMP_BUF(_env));
+
+#elif defined(VGP_s390x_linux)
+
+#define VG_MINIMAL_JMP_BUF(_name)        ULong _name [10 + 8]
+__attribute__((returns_twice))
+UWord VG_MINIMAL_SETJMP(VG_MINIMAL_JMP_BUF(_env));
+__attribute__((noreturn))
+void  VG_MINIMAL_LONGJMP(VG_MINIMAL_JMP_BUF(_env));
+
+#elif defined(__clang__) && defined(VGP_arm64_linux)
+
+#define VG_MINIMAL_JMP_BUF(_name)        UWord _name [13]
+__attribute__((returns_twice))
+UWord VG_MINIMAL_SETJMP(VG_MINIMAL_JMP_BUF(_env));
+__attribute__((noreturn))
+void VG_MINIMAL_LONGJMP(VG_MINIMAL_JMP_BUF(_env));
+
+#elif defined(VGP_arm64_freebsd)
+
+#define VG_MINIMAL_JMP_BUF(_name)        UWord _name [22]
 __attribute__((returns_twice))
 UWord VG_MINIMAL_SETJMP(VG_MINIMAL_JMP_BUF(_env));
 __attribute__((noreturn))

@@ -21,7 +21,7 @@
 
    This program is free software; you can redistribute it and/or
    modify it under the terms of the GNU General Public License as
-   published by the Free Software Foundation; either version 2 of the
+   published by the Free Software Foundation; either version 3 of the
    License, or (at your option) any later version.
 
    This program is distributed in the hope that it will be useful, but
@@ -30,9 +30,7 @@
    General Public License for more details.
 
    You should have received a copy of the GNU General Public License
-   along with this program; if not, write to the Free Software
-   Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
-   02111-1307, USA.
+   along with this program; if not, see <http://www.gnu.org/licenses/>.
 
    The GNU General Public License is contained in the file COPYING.
 */
@@ -100,7 +98,7 @@
 #include <fcntl.h>
 #include <stdlib.h>
 #include <signal.h>
-#include <sys/poll.h>
+#include <poll.h>
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
@@ -415,10 +413,10 @@ static ULong read_ULong_le ( UChar* src )
 static Frame* mk_Frame_asciiz ( const char* tag, const char* str )
 {
    assert(strlen(tag) == 4);
-   Frame* f = calloc(sizeof(Frame), 1);
+   Frame* f = calloc(1, sizeof(Frame));
    size_t n_str = strlen(str);
    f->n_data = 4 + n_str + 1;
-   f->data = calloc(f->n_data, 1);
+   f->data = calloc(1, f->n_data);
    memcpy(&f->data[0], tag, 4);
    memcpy(&f->data[4], str, n_str);
    assert(f->data[4 + n_str] == 0);
@@ -464,9 +462,9 @@ static Bool parse_Frame_asciiz ( Frame* fr, const HChar* tag,
 static Frame* mk_Frame_le64 ( const HChar* tag, ULong n1 )
 {
    assert(strlen(tag) == 4);
-   Frame* f = calloc(sizeof(Frame), 1);
+   Frame* f = calloc(1, sizeof(Frame));
    f->n_data = 4 + 1*8;
-   f->data = calloc(f->n_data, 1);
+   f->data = calloc(1, f->n_data);
    memcpy(&f->data[0], tag, 4);
    write_ULong_le(&f->data[4 + 0*8], n1);
    return f;
@@ -475,9 +473,9 @@ static Frame* mk_Frame_le64 ( const HChar* tag, ULong n1 )
 static Frame* mk_Frame_le64_le64 ( const HChar* tag, ULong n1, ULong n2 )
 {
    assert(strlen(tag) == 4);
-   Frame* f = calloc(sizeof(Frame), 1);
+   Frame* f = calloc(1, sizeof(Frame));
    f->n_data = 4 + 2*8;
-   f->data = calloc(f->n_data, 1);
+   f->data = calloc(1, f->n_data);
    memcpy(&f->data[0], tag, 4);
    write_ULong_le(&f->data[4 + 0*8], n1);
    write_ULong_le(&f->data[4 + 1*8], n2);
@@ -505,9 +503,9 @@ static Frame* mk_Frame_le64_le64_le64_bytes (
                  /*OUT*/UChar** data )
 {
    assert(strlen(tag) == 4);
-   Frame* f = calloc(sizeof(Frame), 1);
+   Frame* f = calloc(1, sizeof(Frame));
    f->n_data = 4 + 3*8 + n_data;
-   f->data = calloc(f->n_data, 1);
+   f->data = calloc(1, f->n_data);
    memcpy(&f->data[0], tag, 4);
    write_ULong_le(&f->data[4 + 0*8], n1);
    write_ULong_le(&f->data[4 + 1*8], n2);
@@ -652,7 +650,7 @@ static UInt calc_gnu_debuglink_crc32(/*OUT*/Bool* ok, int fd, ULong size)
       ULong img_szB  = size;
       ULong curr_off = 0;
       while (1) {
-         assert(curr_off >= 0 && curr_off <= img_szB);
+         assert(curr_off <= img_szB);
          if (curr_off == img_szB) break;
          ULong avail = img_szB - curr_off;
          assert(avail > 0 && avail <= img_szB);
@@ -708,9 +706,9 @@ static Bool handle_transaction ( int conn_no )
    // Reject obviously-insane length fields.
    if (rd_len > 4*1024*1024) goto fail;
    assert(req == NULL);
-   req = calloc(sizeof(Frame), 1);
+   req = calloc(1, sizeof(Frame));
    req->n_data = rd_len;
-   req->data = calloc(rd_len, 1);
+   req->data = calloc(1, rd_len);
    if (rd_len > 0) {
       Int r = my_read(sd, req->data, req->n_data);
       if (r != rd_len) goto fail;
@@ -776,10 +774,12 @@ static Bool handle_transaction ( int conn_no )
          int r = fstat(fd, &stat_buf);
          if (r != 0) {
             res = mk_Frame_asciiz("FAIL", "OPEN: cannot stat file");
+            close(fd);
             ok = False;
          }
          if (ok && stat_buf.st_size == 0) {
             res = mk_Frame_asciiz("FAIL", "OPEN: file has zero size");
+            close(fd);
             ok = False;
          }
          if (ok) {
@@ -1172,7 +1172,7 @@ int main (int argc, char** argv)
                  break;
 
            if (i >= M_CONNECTIONS) {
-              fprintf(stderr, "\n\nMore than %d concurrent connections.\n"
+              fprintf(stderr, "\n\nMore than %u concurrent connections.\n"
                       "Restart the server giving --max-connect=INT on the\n"
                       "commandline to increase the limit.\n\n",
                       M_CONNECTIONS);

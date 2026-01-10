@@ -12,7 +12,7 @@
 
    This program is free software; you can redistribute it and/or
    modify it under the terms of the GNU General Public License as
-   published by the Free Software Foundation; either version 2 of the
+   published by the Free Software Foundation; either version 3 of the
    License, or (at your option) any later version.
 
    This program is distributed in the hope that it will be useful, but
@@ -21,9 +21,7 @@
    General Public License for more details.
 
    You should have received a copy of the GNU General Public License
-   along with this program; if not, write to the Free Software
-   Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
-   02110-1301, USA.
+   along with this program; if not, see <http://www.gnu.org/licenses/>.
 
    The GNU General Public License is contained in the file COPYING.
 
@@ -260,10 +258,6 @@ void vpanic ( const HChar* str )
 /*--- vex_printf                                        ---*/
 /*---------------------------------------------------------*/
 
-/* This should be the only <...> include in the entire VEX library.
-   New code for vex_util.c should go above this point. */
-#include <stdarg.h>
-
 SizeT vex_strlen ( const HChar* str )
 {
    SizeT i = 0;
@@ -468,6 +462,7 @@ UInt vprintf_wrk ( void(*sink)(HChar),
             PAD(len1); PUTSTR(str); PAD(len3);
             break;
          }
+         case 'i':
          case 'd': {
             Long l;
             vassert(is_sizet == False); // %zd is obscure; we don't allow it
@@ -545,8 +540,7 @@ UInt vprintf_wrk ( void(*sink)(HChar),
 
 
 /* A general replacement for printf().  Note that only low-level 
-   debugging info should be sent via here.  The official route is to
-   to use vg_message().  This interface is deprecated.
+   debugging info should be sent via here.
 */
 static HChar myprintf_buf[1000];
 static Int   n_myprintf_buf;
@@ -612,18 +606,25 @@ static void add_to_vg_sprintf_buf ( HChar c )
    *vg_sprintf_ptr++ = c;
 }
 
-UInt vex_sprintf ( HChar* buf, const HChar *format, ... )
+UInt vex_vsprintf ( HChar* buf, const HChar* format, va_list vargs )
 {
-   Int ret;
-   va_list vargs;
+   UInt ret;
 
    vg_sprintf_ptr = buf;
+   ret = vprintf_wrk(add_to_vg_sprintf_buf, format, vargs);
+   add_to_vg_sprintf_buf('\0');
+
+   vassert(vex_strlen(buf) == ret);
+   return ret;
+}
+
+UInt vex_sprintf ( HChar* buf, const HChar *format, ... )
+{
+   UInt ret;
+   va_list vargs;
 
    va_start(vargs,format);
-
-   ret = vprintf_wrk ( add_to_vg_sprintf_buf, format, vargs );
-   add_to_vg_sprintf_buf(0);
-
+   ret = vex_vsprintf(buf, format, vargs);
    va_end(vargs);
 
    vassert(vex_strlen(buf) == ret);
@@ -635,9 +636,9 @@ UInt vex_sprintf ( HChar* buf, const HChar *format, ... )
 /*--- Misaligned memory access support                  ---*/
 /*---------------------------------------------------------*/
 
-UInt read_misaligned_UInt_LE ( void* addr )
+UInt read_misaligned_UInt_LE ( const void* addr )
 {
-   UChar* p = (UChar*)addr;
+   const UChar* p = addr;
    UInt   w = 0;
    w = (w << 8) | p[3];
    w = (w << 8) | p[2];
@@ -646,9 +647,9 @@ UInt read_misaligned_UInt_LE ( void* addr )
    return w;
 }
 
-ULong read_misaligned_ULong_LE ( void* addr )
+ULong read_misaligned_ULong_LE ( const void* addr )
 {
-   UChar* p = (UChar*)addr;
+   const UChar* p = addr;
    ULong  w = 0;
    w = (w << 8) | p[7];
    w = (w << 8) | p[6];

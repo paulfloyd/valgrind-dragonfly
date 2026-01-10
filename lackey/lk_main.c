@@ -12,7 +12,7 @@
 
    This program is free software; you can redistribute it and/or
    modify it under the terms of the GNU General Public License as
-   published by the Free Software Foundation; either version 2 of the
+   published by the Free Software Foundation; either version 3 of the
    License, or (at your option) any later version.
 
    This program is distributed in the hope that it will be useful, but
@@ -21,9 +21,7 @@
    General Public License for more details.
 
    You should have received a copy of the GNU General Public License
-   along with this program; if not, write to the Free Software
-   Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
-   02111-1307, USA.
+   along with this program; if not, see <http://www.gnu.org/licenses/>.
 
    The GNU General Public License is contained in the file COPYING.
 */
@@ -410,8 +408,8 @@ typedef
 
 typedef
    struct {
-      EventKind  ekind;
       IRAtom*    addr;
+      EventKind  ekind;
       Int        size;
       IRAtom*    guard; /* :: Ity_I1, or NULL=="always True" */
    }
@@ -741,7 +739,7 @@ IRSB* lk_instrument ( VgCallbackClosure* closure,
                 * instrument, by the VEX statements that are the
                 * translation of that known destination. This feature is
                 * called 'SB chasing' and can be influenced by command
-                * line option --vex-guest-chase-thresh.
+                * line option --vex-guest-chase=[yes|no].
                 *
                 * To get an accurate count of the calls to a specific
                 * function, taking SB chasing into account, we need to
@@ -1051,7 +1049,7 @@ static void lk_pre_clo_init(void)
    VG_(details_version)         (NULL);
    VG_(details_description)     ("an example Valgrind tool");
    VG_(details_copyright_author)(
-      "Copyright (C) 2002-2017, and GNU GPL'd, by Nicholas Nethercote.");
+      "Copyright (C) 2002-2024, and GNU GPL'd, by Nicholas Nethercote et al.");
    VG_(details_bug_reports_to)  (VG_BUGS_TO);
    VG_(details_avg_translation_sizeB) ( 200 );
 

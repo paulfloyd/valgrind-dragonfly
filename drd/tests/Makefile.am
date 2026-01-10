@@ -4,18 +4,21 @@ include $(top_srcdir)/Makefile.tool-tests.am
 dist_noinst_SCRIPTS =		    \
 	compare_error_count_with    \
 	filter_annotate_barrier_xml \
-	filter_error_count	    \
-	filter_error_summary	    \
-	filter_stderr               \
+	filter_lambda               \
 	filter_stderr_and_thread_no \
-	filter_stderr_and_thread_no_and_offset \
 	filter_stderr_solaris       \
-	filter_thread_no	    \
 	filter_thread_name_xml      \
-	filter_xml_and_thread_no    \
 	run_openmp_test             \
 	supported_libpthread	    \
 	supported_sem_init
+
+noinst_SCRIPTS = \
+	filter_error_count \
+	filter_error_summary \
+	filter_stderr \
+	filter_stderr_and_thread_no_and_offset \
+	filter_thread_no \
+	filter_xml_and_thread_no
 
 noinst_HEADERS =                                    \
 	tsan_thread_wrappers_pthread.h		    \
@@ -67,11 +70,15 @@ EXTRA_DIST =                                        \
 	annotate_ignore_write2.stderr.exp	    \
 	annotate_ignore_write2.stderr.exp-solaris   \
 	annotate_ignore_write2.vgtest		    \
+	annotate_trace_memory.stderr.exp-arm        \
 	annotate_trace_memory.stderr.exp-32bit	    \
+	annotate_trace_memory.stderr.exp-32bit-clang \
 	annotate_trace_memory.stderr.exp-64bit	    \
 	annotate_trace_memory.stderr.exp-mips32	   \
 	annotate_trace_memory.vgtest		    \
+	annotate_trace_memory_xml.stderr.exp-arm    \
 	annotate_trace_memory_xml.stderr.exp-32bit  \
+	annotate_trace_memory_xml.stderr.exp-32bit-clang \
 	annotate_trace_memory_xml.stderr.exp-64bit  \
 	annotate_trace_memory_xml.stderr.exp-mips32 \
 	annotate_trace_memory_xml.vgtest	    \
@@ -84,12 +91,16 @@ EXTRA_DIST =                                        \
 	bug322621.vgtest			    \
 	bug322621.stderr.exp			    \
 	bar_bad.stderr.exp			    \
+	bar_bad.stderr.exp-no-barrier		    \
 	bar_bad.stderr.exp-nohang		    \
 	bar_bad.stderr.exp-solaris		    \
+	bar_bad.stderr.exp-freebsd		    \
 	bar_bad.vgtest				    \
 	bar_bad_xml.stderr.exp			    \
+	bar_bad_xml.stderr.exp-no-barrier	    \
 	bar_bad_xml.stderr.exp-nohang		    \
 	bar_bad_xml.stderr.exp-solaris		    \
+	bar_bad_xml.stderr.exp-freebsd		    \
 	bar_bad_xml.vgtest			    \
 	bar_trivial.stderr.exp			    \
 	bar_trivial.stdout.exp			    \
@@ -102,6 +113,8 @@ EXTRA_DIST =                                        \
 	circular_buffer.vgtest			    \
 	concurrent_close.stderr.exp		    \
 	concurrent_close.vgtest			    \
+	condvar.stderr.exp			    \
+	condvar.vgtest				    \
 	custom_alloc.stderr.exp			    \
 	custom_alloc.vgtest			    \
 	custom_alloc_fiw.stderr.exp		    \
@@ -145,6 +158,8 @@ EXTRA_DIST =                                        \
 	hold_lock_1.vgtest                          \
 	hold_lock_2.stderr.exp                      \
 	hold_lock_2.vgtest                          \
+	getaddrinfo.stderr.exp                      \
+	getaddrinfo.vgtest                          \
 	linuxthreads_det.stderr.exp                 \
 	linuxthreads_det.stderr.exp-linuxthreads    \
 	linuxthreads_det.stdout.exp                 \
@@ -205,22 +220,22 @@ EXTRA_DIST =                                        \
 	pth_create_glibc_2_0.stderr.exp             \
 	pth_create_glibc_2_0.vgtest                 \
 	pth_detached.stderr.exp                     \
-	pth_detached.stdout.exp                     \
 	pth_detached.vgtest                         \
 	pth_detached2.stderr.exp                    \
-	pth_detached2.stdout.exp                    \
 	pth_detached2.vgtest                        \
 	pth_detached3.stderr.exp1                   \
 	pth_detached3.stderr.exp2                   \
+	pth_detached3.stderr.exp-freebsd            \
 	pth_detached3.vgtest                        \
 	pth_detached_sem.stderr.exp                 \
-	pth_detached_sem.stdout.exp                 \
 	pth_detached_sem.vgtest                     \
 	pth_inconsistent_cond_wait.stderr.exp1      \
 	pth_inconsistent_cond_wait.stderr.exp2      \
 	pth_inconsistent_cond_wait.vgtest           \
 	pth_mutex_reinit.stderr.exp		    \
 	pth_mutex_reinit.vgtest			    \
+	pth_mutex_signal.stderr.exp		    \
+	pth_mutex_signal.vgtest			    \
 	pth_once.stderr.exp			    \
 	pth_once.vgtest				    \
 	pth_process_shared_mutex.stderr.exp         \
@@ -234,6 +249,7 @@ EXTRA_DIST =                                        \
 	recursive_mutex.stderr.exp-linux            \
 	recursive_mutex.stderr.exp-darwin           \
 	recursive_mutex.stderr.exp-solaris          \
+	recursive_mutex.stderr.exp-freebsd          \
 	recursive_mutex.vgtest                      \
 	rwlock_race.stderr.exp	                    \
 	rwlock_race.stderr.exp2	                    \
@@ -252,6 +268,9 @@ EXTRA_DIST =                                        \
 	sem_as_mutex3.stderr.exp-mips32-be          \
 	sem_as_mutex3.stderr.exp-mips32-le          \
 	sem_as_mutex3.vgtest                        \
+	sem_clockwait_np.stderr.exp                 \
+	sem_clockwait_np.stdout.exp                 \
+	sem_clockwait_np.vgtest                     \
 	sem_open.stderr.exp                         \
 	sem_open.stderr.exp-mips32-be               \
 	sem_open.stderr.exp-mips32-le               \
@@ -266,6 +285,10 @@ EXTRA_DIST =                                        \
 	sem_open_traced.vgtest                      \
 	sem_wait.stderr.exp                         \
 	sem_wait.vgtest                             \
+	shared_timed_mutex.stderr.exp               \
+	shared_timed_mutex.vgtest                   \
+	swapcontext.stderr.exp                      \
+	swapcontext.vgtest                          \
 	sigalrm.stderr.exp                          \
 	sigalrm.vgtest                              \
 	sigaltstack.stderr.exp                      \
@@ -274,6 +297,8 @@ EXTRA_DIST =                                        \
 	std_atomic.vgtest			            \
 	std_list.stderr.exp		  	    \
 	std_list.vgtest			            \
+	std_mutex.stderr.exp		  	    \
+	std_mutex.vgtest			    \
 	std_string.stderr.exp		  	    \
 	std_string.vgtest			    \
 	std_thread.stderr.exp		  	    \
@@ -308,6 +333,8 @@ EXTRA_DIST =                                        \
 	tc09_bad_unlock.stderr.exp-glibc2.8         \
 	tc09_bad_unlock.stderr.exp-s390             \
 	tc09_bad_unlock.stderr.exp-solaris          \
+	tc09_bad_unlock.stderr.exp-freebsd          \
+	tc09_bad_unlock.stderr.exp-freebsd-clang    \
 	tc09_bad_unlock.vgtest                      \
 	tc10_rec_lock.stderr.exp                    \
 	tc10_rec_lock.vgtest                        \
@@ -328,29 +355,37 @@ EXTRA_DIST =                                        \
 	tc18_semabuse.vgtest                        \
 	tc19_shadowmem.stderr.exp-32bit             \
 	tc19_shadowmem.stderr.exp-32bit-BE          \
+	tc19_shadowmem.stderr.exp-32on64            \
 	tc19_shadowmem.stderr.exp-64bit             \
 	tc19_shadowmem.vgtest                       \
 	tc21_pthonce.stderr.exp                     \
 	tc21_pthonce.stdout.exp                     \
 	tc21_pthonce.vgtest                         \
-	tc22_exit_w_lock.stderr.exp-32bit	    \
-	tc22_exit_w_lock.stderr.exp-64bit           \
+	tc22_exit_w_lock.stderr.exp                 \
+	tc22_exit_w_lock.stderr.exp-solaris         \
 	tc22_exit_w_lock.vgtest                     \
 	tc23_bogus_condwait.stderr.exp-linux-x86    \
 	tc23_bogus_condwait.stderr.exp-linux-ppc    \
 	tc23_bogus_condwait.stderr.exp-darwin-x86   \
 	tc23_bogus_condwait.stderr.exp-darwin-amd64 \
+	tc23_bogus_condwait.stderr.exp-freebsd      \
 	tc23_bogus_condwait.vgtest                  \
 	tc24_nonzero_sem.stderr.exp                 \
 	tc24_nonzero_sem.vgtest                     \
+	thrd_create.stderr.exp			    \
+	thrd_create.vgtest			    \
 	thread_name.stderr.exp			    \
 	thread_name.vgtest			    \
 	thread_name_xml.stderr.exp		    \
 	thread_name_xml.vgtest			    \
+	thread_name_freebsd.stderr.exp		    \
+	thread_name_freebsd.vgtest		    \
 	threaded-fork.stderr.exp		    \
 	threaded-fork.vgtest			    \
 	threaded-fork-vcs.stderr.exp		    \
 	threaded-fork-vcs.vgtest		    \
+	timed_mutex.stderr.exp                      \
+	timed_mutex.vgtest                          \
 	tls_threads.stderr.exp			    \
 	tls_threads.vgtest			    \
 	trylock.stderr.exp                          \
@@ -394,8 +429,8 @@ check_PROGRAMS =      \
   pth_detached3       \
   pth_inconsistent_cond_wait \
   pth_mutex_reinit    \
+  pth_mutex_signal    \
   pth_process_shared_mutex   \
-  pth_uninitialized_cond \
   recursive_mutex     \
   rwlock_race         \
   rwlock_test         \
@@ -406,7 +441,11 @@ check_PROGRAMS =      \
   threaded-fork       \
   trylock             \
   unit_bitmap         \
-  unit_vc
+  unit_vc             \
+  std_atomic          \
+  std_list            \
+  std_mutex	      \
+  std_string
 
 if HAVE_BOOST_1_35
 check_PROGRAMS += boost_thread
@@ -426,8 +465,11 @@ check_PROGRAMS +=        \
   annotate_smart_pointer
 endif
 
-if !VGCONF_OS_IS_DRAGONFLY
-check_PROGRAMS += tsan_unittest
+if !VGCONF_OS_IS_FREEBSD
+if !VG_CONF_OS_IS_DRAGONFLY
+check_PROGRAMS += tsan_unittest \
+  pth_uninitialized_cond
+endif
 endif
 
 # clang 3.3 will generate errors about libstdc++ headers from 
@@ -435,12 +477,24 @@ endif
 if CXX_CAN_INCLUDE_THREAD_HEADER
 if HAVE_SHARED_POINTER_ANNOTATION
 check_PROGRAMS += \
-  std_atomic      \
-  std_list        \
-  std_string      \
   std_thread      \
   std_thread2
 endif
+endif
+
+if CXX_CAN_INCLUDE_CONDITION_VARIABLE_HEADER
+check_PROGRAMS += \
+    condvar
+endif
+
+if CXX_CAN_USE_SHARED_TIMED_MUTEX
+check_PROGRAMS += \
+    shared_timed_mutex
+endif
+
+if CXX_CAN_USE_TIMED_MUTEX
+check_PROGRAMS += \
+    timed_mutex
 endif
 
 if HAVE_OPENMP
@@ -466,8 +520,20 @@ if HAVE_PTHREAD_SPINLOCK
 check_PROGRAMS += pth_spinlock
 endif
 
+if HAVE_SWAPCONTEXT
+check_PROGRAMS += swapcontext
+endif
+
+if HAVE_THRD_CREATE
+check_PROGRAMS += thrd_create
+endif
+
 if !VGCONF_OS_IS_DARWIN
 check_PROGRAMS += sem_wait
+endif
+
+if VGCONF_OS_IS_FREEBSD
+check_PROGRAMS += thread_name_freebsd
 endif
 
 
@@ -477,12 +543,18 @@ AM_CXXFLAGS += $(AM_FLAG_M3264_PRI) @FLAG_W_EXTRA@ @FLAG_FALIGNED_NEW@ \
 
 LDADD = -lpthread
 
-
+annotate_sem_CFLAGS         = $(AM_CFLAGS) @FLAG_W_NO_UNUSED_BUT_SET_VARIABLE@
+annotate_rwlock_CFLAGS      = $(AM_CFLAGS) @FLAG_W_NO_UNUSED_BUT_SET_VARIABLE@
 bug322621_SOURCES           = bug322621.cpp
+condvar_SOURCES		    = condvar.cpp
+condvar_CXXFLAGS            = $(AM_CXXFLAGS) -std=c++0x
 concurrent_close_SOURCES    = concurrent_close.cpp
-
+if VGCONF_OS_IS_FREEBSD
+dlopen_main_LDADD           = ${LDADD}
+else
 if !VGCONF_OS_IS_DRAGONFLY
 dlopen_main_LDADD           = -ldl
+endif
 endif
 
 dlopen_lib_so_SOURCES       = dlopen_lib.c
@@ -506,9 +578,11 @@ pth_create_chain_CFLAGS     += -D__EXTENSIONS__
 pth_detached_CFLAGS         += -D__EXTENSIONS__
 endif
 
+sem_as_mutex_CGLAGS         = ${AM_CFLAGS} @FLAG_W_NO_DEPRECATED_DECLARATIONS@
 tsan_unittest_SOURCES       = tsan_unittest.cpp
 tsan_unittest_CXXFLAGS      = $(AM_CXXFLAGS) \
-			-DTHREAD_WRAPPERS='"tsan_thread_wrappers_pthread.h"'
+			-DTHREAD_WRAPPERS='"tsan_thread_wrappers_pthread.h"' \
+			@FLAG_W_NO_UNUSED_BUT_SET_VARIABLE@ @FLAG_W_NO_DEPRECATED_DECLARATIONS@
 
 unit_bitmap_CFLAGS          = $(AM_CFLAGS) -O2 \
                               -DENABLE_DRD_CONSISTENCY_CHECKS \
@@ -555,19 +629,27 @@ if HAVE_PTHREAD_BARRIER
 matinv_LDADD                = $(LDADD) -lm
 endif
 
-rwlock_test_CFLAGS          = $(AM_CFLAGS)
+pth_detached_sem_CFLAGS     = ${AM_CFLAGS} @FLAG_W_NO_DEPRECATED_DECLARATIONS@
+rwlock_test_CFLAGS          = $(AM_CFLAGS) @FLAG_W_NO_UNUSED_BUT_SET_VARIABLE@
 if VGCONF_OS_IS_SOLARIS
 rwlock_test_CFLAGS          += -D__EXTENSIONS__
 endif
 
+shared_timed_mutex_SOURCES  = shared_timed_mutex.cpp
+shared_timed_mutex_CXXFLAGS = $(AM_CXXFLAGS) -std=c++1y
+
 std_atomic_SOURCES          = std_atomic.cpp
-std_atomic_CXXFLAGS         = $(AM_CXXFLAGS) -std=c++0x -Wno-sign-compare
+std_atomic_CXXFLAGS         = $(AM_CXXFLAGS) -std=c++0x @FLAG_W_NO_SIGN_COMPARE@
 
 std_list_SOURCES            = std_list.cpp
-std_list_CXXFLAGS           = $(AM_CXXFLAGS) -std=c++0x -Wno-sign-compare
+std_list_CXXFLAGS           = $(AM_CXXFLAGS) -std=c++0x @FLAG_W_NO_SIGN_COMPARE@
+
+std_mutex_SOURCES           = std_mutex.cpp
+std_mutex_CXXFLAGS          = $(AM_CXXFLAGS) -std=c++0x @FLAG_W_NO_SIGN_COMPARE@
+std_mutex_LDFLAGS           = -pthread
 
 std_string_SOURCES          = std_string.cpp
-std_string_CXXFLAGS         = $(AM_CXXFLAGS) -std=c++0x -Wno-sign-compare
+std_string_CXXFLAGS         = $(AM_CXXFLAGS) -std=c++0x @FLAG_W_NO_SIGN_COMPARE@
 
 # Note: -Wl,--no-as-needed is a workaround for
 # https://bugs.launchpad.net/ubuntu/+source/gcc-defaults/+bug/1228201
@@ -584,4 +666,19 @@ if !VGCONF_OS_IS_SOLARIS
 std_thread2_LDFLAGS          = -Wl,--no-as-needed
 endif
 
+sem_as_mutex_CFLAGS         = ${AM_CFLAGS} @FLAG_W_NO_DEPRECATED_DECLARATIONS@
 sem_wait_SOURCES            = sem_wait.cpp
+
+swapcontext_SOURCES         = swapcontext.c
+swapcontext_CFLAGS          = $(AM_CFLAGS) -g @FLAG_W_NO_DEPRECATED_DECLARATIONS@
+if VGCONF_OS_IS_SOLARIS
+swapcontext_CFLAGS          += -D__EXTENSIONS__
+endif
+
+timed_mutex_SOURCES         = timed_mutex.cpp
+timed_mutex_CXXFLAGS        = $(AM_CXXFLAGS) -std=c++0x
+
+thrd_create_SOURCES	    = thrd_create.c
+if VGCONF_OS_IS_FREEBSD
+thrd_create_LDFLAGS          = -lstdthreads
+endif

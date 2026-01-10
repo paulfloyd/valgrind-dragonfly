@@ -12,7 +12,7 @@
 
    This program is free software; you can redistribute it and/or
    modify it under the terms of the GNU General Public License as
-   published by the Free Software Foundation; either version 2 of the
+   published by the Free Software Foundation; either version 3 of the
    License, or (at your option) any later version.
 
    This program is distributed in the hope that it will be useful, but
@@ -21,9 +21,7 @@
    General Public License for more details.
 
    You should have received a copy of the GNU General Public License
-   along with this program; if not, write to the Free Software
-   Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
-   02111-1307, USA.
+   along with this program; if not, see <http://www.gnu.org/licenses/>.
 
    The GNU General Public License is contained in the file COPYING.
 */
@@ -58,6 +56,18 @@
 extern Addr VG_(trampoline_stuff_start);
 extern Addr VG_(trampoline_stuff_end);
 
+#if defined(VGP_x86_freebsd)
+extern void VG_(x86_freebsd_SUBST_FOR_sigreturn)(void);
+#endif
+
+#if defined(VGP_amd64_freebsd)
+extern void VG_(amd64_freebsd_SUBST_FOR_sigreturn)(void);
+#endif
+
+#if defined(VGP_arm64_freebsd)
+extern void VG_(arm64_freebsd_SUBST_FOR_sigreturn);
+#endif
+
 #if defined(VGP_x86_dragonfly)
 extern void VG_(x86_dragonfly_SUBST_FOR_sigreturn);
 #endif
@@ -65,7 +75,6 @@ extern void VG_(x86_dragonfly_SUBST_FOR_sigreturn);
 #if defined(VGP_amd64_dragonfly)
 extern void VG_(amd64_dragonfly_SUBST_FOR_sigreturn);
 #endif
-
 #if defined(VGP_x86_linux)
 extern Addr VG_(x86_linux_SUBST_FOR_sigreturn);
 extern Addr VG_(x86_linux_SUBST_FOR_rt_sigreturn);
@@ -79,6 +88,8 @@ extern Addr VG_(amd64_linux_REDIR_FOR_vgettimeofday);
 extern Addr VG_(amd64_linux_REDIR_FOR_vtime);
 extern Addr VG_(amd64_linux_REDIR_FOR_vgetcpu);
 extern UInt VG_(amd64_linux_REDIR_FOR_strlen)( void* );
+extern Int VG_(amd64_linux_REDIR_FOR_strcmp)( void*, void* );
+extern Int VG_(amd64_linux_REDIR_FOR_memcmp)( void*, void*, SizeT );
 extern Char* VG_(amd64_linux_REDIR_FOR_index) ( const Char*, Int );
 #endif
 
@@ -93,6 +104,7 @@ extern void* VG_(ppc32_linux_REDIR_FOR_strchr)( void*, Int );
 #if defined(VGP_ppc64be_linux) || defined(VGP_ppc64le_linux)
 extern Addr  VG_(ppc64_linux_SUBST_FOR_rt_sigreturn);
 extern UInt  VG_(ppc64_linux_REDIR_FOR_strlen)( void* );
+extern UInt  VG_(ppc64_linux_REDIR_FOR_strcmp)( void*, void* );
 extern void* VG_(ppc64_linux_REDIR_FOR_strchr)( void*, Int );
 /* A label (sans dot) marking the ultra-magical return stub via which
    all redirected and wrapped functions are made to "return" on
@@ -165,6 +177,19 @@ extern UInt  VG_(mips32_linux_REDIR_FOR_strlen)( void* );
 extern Addr  VG_(mips64_linux_SUBST_FOR_rt_sigreturn);
 extern Char* VG_(mips64_linux_REDIR_FOR_index)( const Char*, Int );
 extern UInt  VG_(mips64_linux_REDIR_FOR_strlen)( void* );
+#endif
+
+#if defined(VGP_nanomips_linux)
+extern Addr  VG_(nanomips_linux_SUBST_FOR_rt_sigreturn);
+extern Char* VG_(nanomips_linux_REDIR_FOR_index)( const Char*, Int );
+extern UInt  VG_(nanomips_linux_REDIR_FOR_strlen)( void* );
+#endif
+
+#if defined(VGP_riscv64_linux)
+extern Addr   VG_(riscv64_linux_SUBST_FOR_rt_sigreturn);
+extern HChar* VG_(riscv64_linux_REDIR_FOR_index)( const HChar*, Int );
+extern SizeT  VG_(riscv64_linux_REDIR_FOR_strlen)( const HChar* );
+extern Int    VG_(riscv64_linux_REDIR_FOR_strcmp)( const HChar*, const HChar* );
 #endif
 
 #if defined(VGP_x86_solaris)

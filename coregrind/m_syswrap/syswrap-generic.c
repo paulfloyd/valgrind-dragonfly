@@ -14,7 +14,7 @@
 
    This program is free software; you can redistribute it and/or
    modify it under the terms of the GNU General Public License as
-   published by the Free Software Foundation; either version 2 of the
+   published by the Free Software Foundation; either version 3 of the
    License, or (at your option) any later version.
 
    This program is distributed in the hope that it will be useful, but
@@ -23,14 +23,12 @@
    General Public License for more details.
 
    You should have received a copy of the GNU General Public License
-   along with this program; if not, write to the Free Software
-   Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
-   02111-1307, USA.
+   along with this program; if not, see <http://www.gnu.org/licenses/>.
 
    The GNU General Public License is contained in the file COPYING.
 */
 
-#if defined(VGO_linux) || defined(VGO_darwin) || defined(VGO_solaris) || defined(VGO_dragonfly)
+#if defined(VGO_linux) || defined(VGO_darwin) || defined(VGO_solaris) || defined(VGO_freebsd)|| defined(VGO_dragonfly)
 
 #include "pub_core_basics.h"
 #include "pub_core_vki.h"
@@ -42,7 +40,7 @@
 #include "pub_core_xarray.h"
 #include "pub_core_clientstate.h"   // VG_(brk_base), VG_(brk_limit)
 #include "pub_core_debuglog.h"
-#include "pub_core_errormgr.h"
+#include "pub_core_errormgr.h"      // For VG_(maybe_record_error)
 #include "pub_core_gdbserver.h"     // VG_(gdbserver)
 #include "pub_core_libcbase.h"
 #include "pub_core_libcassert.h"
@@ -67,6 +65,8 @@
 
 #include "config.h"
 
+static
+HChar *getsockdetails(Int fd, UInt len, HChar *buf);
 
 void ML_(guess_and_register_stack) (Addr sp, ThreadState* tst)
 {
@@ -121,9 +121,11 @@ Bool ML_(valid_client_addr)(Addr start, SizeT size, ThreadId tid,
 		  syscallname, start, start+size-1, (Int)ret);
 
    if (!ret && syscallname != NULL) {
+      if (VG_(clo_verbosity) >= 1) {
       VG_(message)(Vg_UserMsg, "Warning: client syscall %s tried "
                                "to modify addresses %#lx-%#lx\n",
                                syscallname, start, start+size-1);
+      }
       if (VG_(clo_verbosity) > 1) {
          VG_(get_and_pp_StackTrace)(tid, VG_(clo_backtrace_size));
       }
@@ -540,7 +542,10 @@ typedef struct OpenFd
 {
    Int fd;                        /* The file descriptor */
    HChar *pathname;               /* NULL if not a regular file or unknown */
+   HChar *description;            /* Description saved before close */
    ExeContext *where;             /* NULL if inherited from parent */
+   ExeContext *where_closed;      /* record the last close of fd */
+   Bool fd_closed;
    struct OpenFd *next, *prev;
 } OpenFd;
 
@@ -549,10 +554,113 @@ static OpenFd *allocated_fds = NULL;
 
 /* Count of open file descriptors. */
 static Int fd_count = 0;
+/* Last used file descriptor for "new" fds.
+   Used (and updated) in get_next_new_fd to find a new (not yet used)
+   fd number to return in syscall wrappers.  */
+static Int last_new_fd = 0;
 
+/* Replace (dup2) the fd with the highest file descriptor available.
+   Close the fd and return the newly created file descriptor on  success.
+   Keep track of the last_new_fd and return the initial fd on failure. */
+int ML_(get_next_new_fd)(int fd)
+{
+   int next_new_fd;
+
+   /* Check if last_new needs to wrap around.  */
+   if (last_new_fd == 0)
+     last_new_fd = VG_(fd_hard_limit);
+
+   next_new_fd = last_new_fd - 1;
+
+   /* Find the next fd number not in use. If we have to wrap around,
+      just use fd itself.  */
+   while (next_new_fd >= 0 && ML_(fd_recorded)(next_new_fd))
+      next_new_fd--;
+   if (next_new_fd < 0)
+     next_new_fd = fd;
+
+   /* Duplicate and close the existing fd if needed.  */
+   if (next_new_fd != fd) {
+      SysRes res = VG_(dup2)(fd, next_new_fd);
+      if (!sr_isError(res))
+         VG_(close)(fd);
+      else
+        next_new_fd = fd;
+
+      /* Record what the last new fd was we returned.  */
+      last_new_fd = next_new_fd;
+   } else {
+      /* There was no lower "new" fd found. Lets wrap around for
+         the next round.  */
+      last_new_fd = VG_(fd_hard_limit);
+   }
+
+   return next_new_fd;
+}
+
+
+Int ML_(get_fd_count)(void)
+{
+   return fd_count;
+}
+
+/* Close_range caller might want to close very wide range of file descriptors,
+   up to ~0U.  We want to avoid iterating through such a range in a normal
+   close_range, just up to any open file descriptor.  Also, unlike
+   record_fd_close_range, we assume the user might deliberately double closes
+   any file descriptors in the range, so don't warn about double close here. */
+void ML_(record_fd_close_range)(ThreadId tid, Int from_fd)
+{
+  OpenFd *i = allocated_fds;
+
+  if (from_fd >= VG_(fd_hard_limit))
+    return;			/* Valgrind internal */
+
+   while(i) {
+      // Assume the user doesn't want a warning if this came from
+      // close_range. Just record the file descriptors not yet closed here.
+      if (i->fd >= from_fd && !i->fd_closed
+          && i->fd != VG_(log_output_sink).fd
+          && i->fd != VG_(xml_output_sink).fd) {
+         i->fd_closed = True;
+         i->where_closed = ((tid == -1)
+                            ? NULL
+                            : VG_(record_ExeContext)(tid,
+                                                     0/*first_ip_delta*/));
+         fd_count--;
+      }
+      i = i->next;
+   }
+}
+
+struct BadCloseExtra {
+   Int fd;                        /* The file descriptor */
+   HChar *pathname;               /* NULL if not a regular file or unknown */
+   HChar *description;            /* Description of the file descriptor
+                                     might include the pathname */
+   ExeContext *where_closed;      /* record the last close of fd */
+   ExeContext *where_opened;      /* recordwhere the fd  was opened,
+                                     NULL if inherited file descriptor */
+};
+
+struct FdBadUse {
+  Int fd;                        /* The file descriptor */
+  HChar *pathname;               /* NULL if not a regular file or unknown */
+  HChar *description;            /* Description of the file descriptor
+                                    might include the pathname */
+  ExeContext *where_closed;      /* record the last close of fd */
+  ExeContext *where_opened;      /* recordwhere the fd  was opened,
+                                    NULL if inherited file descriptor */
+};
+
+struct NotClosedExtra {
+   Int fd;
+   HChar *pathname;
+   HChar *description;
+};
 
 /* Note the fact that a file descriptor was just closed. */
-void ML_(record_fd_close)(Int fd)
+void ML_(record_fd_close)(ThreadId tid, Int fd)
 {
    OpenFd *i = allocated_fds;
 
@@ -561,16 +669,44 @@ void ML_(record_fd_close)(Int fd)
 
    while(i) {
       if(i->fd == fd) {
-         if(i->prev)
-            i->prev->next = i->next;
-         else
-            allocated_fds = i->next;
-         if(i->next)
-            i->next->prev = i->prev;
-         if(i->pathname) 
-            VG_(free) (i->pathname);
-         VG_(free) (i);
+        if (i->fd_closed) {
+           struct BadCloseExtra bce;
+           bce.fd = i->fd;
+           bce.pathname = i->pathname;
+           bce.description = i->description;
+           bce.where_opened = i->where;
+           bce.where_closed = i->where_closed;
+           VG_(maybe_record_error)(tid, FdBadClose, 0,
+                                   "file descriptor already closed", &bce);
+        } else {
+          i->fd_closed = True;
+          i->where_closed = ((tid == -1)
+              ? NULL
+              : VG_(record_ExeContext)(tid,
+                0/*first_ip_delta*/));
+          /* Record path/socket name, etc. In case we want to print it later,
+             for example for double close.  Note that record_fd_close is
+             actually called from the PRE syscall handler, so the file
+             description is about to be closed, but hasn't yet at this
+             point.  */
+          if (!i->pathname) {
+             Int val;
+             Int len = sizeof(val);
+             if (VG_(getsockopt)(i->fd, VKI_SOL_SOCKET, VKI_SO_TYPE,
+                                 &val, &len) == -1) {
+                HChar *pathname = VG_(malloc)("vg.record_fd_close.fd", 30);
+                VG_(snprintf)(pathname, 30, "file descriptor %d", i->fd);
+                i->description = pathname;
+             } else {
+                HChar *name = VG_(malloc)("vg.record_fd_close.sock", 256);
+                i->description = getsockdetails(i->fd, 256, name);
+             }
+          } else {
+             i->description = VG_(strdup)("vg.record_fd_close.path",
+                                          i->pathname);
+          }
          fd_count--;
+        }
          break;
       }
       i = i->next;
@@ -591,11 +727,21 @@ void ML_(record_fd_open_with_given_name)(ThreadId tid, Int fd,
    if (fd >= VG_(fd_hard_limit))
       return;			/* Valgrind internal */
 
-   /* Check to see if this fd is already open. */
+   /* Check to see if this fd is already open (or closed, we will just
+      override it. */
    i = allocated_fds;
    while (i) {
       if (i->fd == fd) {
-         if (i->pathname) VG_(free)(i->pathname);
+         if (i->pathname) {
+            VG_(free)(i->pathname);
+            i->pathname = NULL;
+         }
+         if (i->description) {
+            VG_(free)(i->description);
+            i->description = NULL;
+         }
+         if (i->fd_closed) /* now we will open it. */
+            fd_count++;
          break;
       }
       i = i->next;
@@ -614,7 +760,10 @@ void ML_(record_fd_open_with_given_name)(ThreadId tid, Int fd,
 
    i->fd = fd;
    i->pathname = VG_(strdup)("syswrap.rfdowgn.2", pathname);
+   i->description = NULL; /* Only set on close.  */
    i->where = (tid == -1) ? NULL : VG_(record_ExeContext)(tid, 0/*first_ip_delta*/);
+   i->fd_closed = False;
+   i->where_closed = NULL;
 }
 
 // Record opening of an fd, and find its name.
@@ -641,8 +790,12 @@ Bool ML_(fd_recorded)(Int fd)
 {
    OpenFd *i = allocated_fds;
    while (i) {
-      if (i->fd == fd)
+      if (i->fd == fd) {
+         if (i->fd_closed)
+            return False;
+         else
          return True;
+      }
       i = i->next;
    }
    return False;
@@ -654,8 +807,12 @@ const HChar *ML_(find_fd_recorded_by_fd)(Int fd)
    OpenFd *i = allocated_fds;
 
    while (i) {
-      if (i->fd == fd)
+      if (i->fd == fd) {
+         if (i->fd_closed)
+            return NULL;
+         else
          return i->pathname;
+      }
       i = i->next;
    }
 
@@ -757,9 +914,10 @@ HChar *inet6_to_name(struct vki_sockaddr_in6 *sa, UInt len, HChar *name)
 
 /*
  * Try get some details about a socket.
+ * Returns the given BUF with max length LEN.
  */
-static void
-getsockdetails(Int fd)
+static
+HChar *getsockdetails(Int fd, UInt len, HChar *buf)
 {
    union u {
       struct vki_sockaddr a;
@@ -781,14 +939,15 @@ getsockdetails(Int fd)
          Int plen = sizeof(struct vki_sockaddr_in);
 
          if (VG_(getpeername)(fd, (struct vki_sockaddr *)&paddr, &plen) != -1) {
-            VG_(message)(Vg_UserMsg, "Open AF_INET socket %d: %s <-> %s\n", fd,
+            VG_(snprintf)(buf, len, "AF_INET socket %d: %s <-> %s", fd,
                          inet_to_name(&(laddr.in), llen, lname),
                          inet_to_name(&paddr, plen, pname));
+            return buf;
          } else {
-            VG_(message)(Vg_UserMsg, "Open AF_INET socket %d: %s <-> unbound\n",
+            VG_(snprintf)(buf, len, "AF_INET socket %d: %s <-> <unbound>",
                          fd, inet_to_name(&(laddr.in), llen, lname));
+            return buf;
          }
-         return;
          }
       case VKI_AF_INET6: {
          HChar lname[128];  // large enough
@@ -797,66 +956,102 @@ getsockdetails(Int fd)
          Int plen = sizeof(struct vki_sockaddr_in6);
 
          if (VG_(getpeername)(fd, (struct vki_sockaddr *)&paddr, &plen) != -1) {
-            VG_(message)(Vg_UserMsg, "Open AF_INET6 socket %d: %s <-> %s\n", fd,
+            VG_(snprintf)(buf, len, "AF_INET6 socket %d: %s <-> %s", fd,
                          inet6_to_name(&(laddr.in6), llen, lname),
                          inet6_to_name(&paddr, plen, pname));
+            return buf;
          } else {
-            VG_(message)(Vg_UserMsg, "Open AF_INET6 socket %d: %s <-> unbound\n",
+            VG_(snprintf)(buf, len, "AF_INET6 socket %d: %s <-> <unbound>",
                          fd, inet6_to_name(&(laddr.in6), llen, lname));
+            return buf;
          }
-         return;
          }
       case VKI_AF_UNIX: {
          static char lname[256];
-         VG_(message)(Vg_UserMsg, "Open AF_UNIX socket %d: %s\n", fd,
+         VG_(snprintf)(buf, len, "AF_UNIX socket %d: %s", fd,
                       unix_to_name(&(laddr.un), llen, lname));
-         return;
+         return buf;
          }
       default:
-         VG_(message)(Vg_UserMsg, "Open pf-%d socket %d:\n",
+         VG_(snprintf)(buf, len, "pf-%d socket %d",
                       laddr.a.sa_family, fd);
-         return;
+         return buf;
       }
    }
 
-   VG_(message)(Vg_UserMsg, "Open socket %d:\n", fd);
+   VG_(snprintf)(buf, len, "socket %d", fd);
+   return buf;
 }
 
 
 /* Dump out a summary, and a more detailed list, of open file descriptors. */
 void VG_(show_open_fds) (const HChar* when)
 {
-   OpenFd *i = allocated_fds;
+   OpenFd *i;
+   int inherited = 0;
 
-   VG_(message)(Vg_UserMsg, "FILE DESCRIPTORS: %d open %s.\n", fd_count, when);
+   for (i = allocated_fds; i; i = i->next) {
+      if (i->where == NULL && !i->fd_closed)
+         inherited++;
+   }
 
-   while (i) {
+   /* If we are running quiet and there are either no open file descriptors
+      or not tracking all fds, then don't report anything.  */
+   if ((fd_count == 0
+        || ((fd_count - inherited == 0) && (VG_(clo_track_fds) < 2)))
+       && (VG_(clo_verbosity) == 0))
+      return;
+
+   if (!VG_(clo_xml)) {
+      VG_(umsg)("FILE DESCRIPTORS: %d open (%d inherited) %s.\n",
+                fd_count, inherited, when);
+   }
+
+   for (i = allocated_fds; i; i = i->next) {
+      if (i->fd_closed)
+         continue;
+
+      if (i->where == NULL && VG_(clo_track_fds) < 2)
+          continue;
+
+      struct NotClosedExtra nce;
+      /* The file descriptor was not yet closed, so the description field was
+         also not yet set. Set it now as if the file descriptor was closed at
+         this point.  */
+      i->description = VG_(malloc)("vg.notclosedextra.descriptor", 256);
       if (i->pathname) {
-         VG_(message)(Vg_UserMsg, "Open file descriptor %d: %s\n", i->fd,
-                      i->pathname);
+         VG_(snprintf) (i->description, 256, "file descriptor %d: %s",
+                        i->fd, i->pathname);
       } else {
          Int val;
          Int len = sizeof(val);
 
          if (VG_(getsockopt)(i->fd, VKI_SOL_SOCKET, VKI_SO_TYPE, &val, &len)
              == -1) {
-            VG_(message)(Vg_UserMsg, "Open file descriptor %d:\n", i->fd);
+            /* Don't want the : at the end in xml */
+            const HChar *colon = VG_(clo_xml) ? "" : ":";
+            VG_(sprintf)(i->description, "file descriptor %d%s", i->fd, colon);
          } else {
-            getsockdetails(i->fd);
+            getsockdetails(i->fd, 256, i->description);
          }
       }
 
-      if(i->where) {
-         VG_(pp_ExeContext)(i->where);
-         VG_(message)(Vg_UserMsg, "\n");
-      } else {
-         VG_(message)(Vg_UserMsg, "   <inherited from parent>\n");
-         VG_(message)(Vg_UserMsg, "\n");
-      }
+      nce.fd = i->fd;
+      nce.pathname = i->pathname;
+      nce.description = i->description;
+      VG_(unique_error) (1 /* Fake ThreadId */,
+                         FdNotClosed,
+                         0, /* Addr */
+                         "Still Open file descriptor",
+                         &nce, /* extra */
+                         i->where,
+                         True, /* print_error */
+                         False, /* allow_GDB_attach */
+                         True /* count_error */);
 
-      i = i->next;
    }
 
+   if (!VG_(clo_xml))
    VG_(message)(Vg_UserMsg, "\n");
 }
 
@@ -926,7 +1121,7 @@ void VG_(init_preopened_fds)(void)
   out:
    VG_(close)(sr_Res(f));
 
-#elif defined(VGO_darwin) || defined(VGO_dragonfly)
+#elif defined(VGO_darwin) || defined(VGO_freebsd)|| defined(VGO_dragonfly)
    init_preopened_fds_without_proc_self_fd();
 
 #elif defined(VGO_solaris)
@@ -970,6 +1165,108 @@ void VG_(init_preopened_fds)(void)
 #else
 #  error Unknown OS
 #endif
+}
+
+Bool fd_eq_Error (VgRes res, const Error *e1, const Error *e2)
+{
+   // XXX should we compare the fds?
+   return False;
+}
+
+void fd_before_pp_Error (const Error *err)
+{
+   // Nothing to do here
+}
+
+void fd_pp_Error (const Error *err)
+{
+   const Bool xml  = VG_(clo_xml);
+   const HChar* whatpre  = VG_(clo_xml) ? "  <what>" : "";
+   const HChar* whatpost = VG_(clo_xml) ? "</what>"  : "";
+   const HChar* auxpre  = VG_(clo_xml) ? "  <auxwhat>" : " ";
+   const HChar* auxpost = VG_(clo_xml) ? "</auxwhat>"  : "";
+   ExeContext *where = VG_(get_error_where)(err);
+   if (VG_(get_error_kind)(err) == FdBadClose) {
+      if (xml) VG_(emit)("  <kind>FdBadClose</kind>\n");
+      struct BadCloseExtra *bce = (struct BadCloseExtra *)
+         VG_(get_error_extra)(err);
+      vg_assert(bce);
+      if (xml) {
+         VG_(emit)("  <fd>%d</fd>\n", bce->fd);
+         if (bce->pathname)
+            VG_(emit)("  <path>%s</path>\n", bce->pathname);
+      }
+      VG_(emit)("%sFile descriptor %d: %s is already closed%s\n",
+                whatpre, bce->fd, bce->description, whatpost);
+      VG_(pp_ExeContext)( where );
+      VG_(emit)("%sPreviously closed%s\n", auxpre, auxpost);
+      VG_(pp_ExeContext)(bce->where_closed);
+      // Inherited file descriptors where never opened (by the program)
+      if (bce->where_opened) {
+         VG_(emit)("%sOriginally opened%s\n", auxpre, auxpost);
+         VG_(pp_ExeContext)(bce->where_opened);
+      }
+   } else if (VG_(get_error_kind)(err) == FdNotClosed) {
+      if (xml) VG_(emit)("  <kind>FdNotClosed</kind>\n");
+      struct NotClosedExtra *nce = (struct NotClosedExtra *)
+         VG_(get_error_extra)(err);
+      if (xml) {
+         VG_(emit)("  <fd>%d</fd>\n", nce->fd);
+         if (nce->pathname)
+            VG_(emit)("  <path>%s</path>\n", nce->pathname);
+      }
+      VG_(emit)("%sOpen %s%s\n", whatpre, nce->description, whatpost);
+      if (where != NULL) {
+         VG_(pp_ExeContext)(where);
+         if (!xml) VG_(message)(Vg_UserMsg, "\n");
+      } else if (!xml) {
+         VG_(message)(Vg_UserMsg, "   <inherited from parent>\n");
+         VG_(message)(Vg_UserMsg, "\n");
+      }
+   } else if (VG_(get_error_kind)(err) == FdBadUse) {
+      if (xml) VG_(emit)("  <kind>FdBadUse</kind>\n");
+      struct FdBadUse *nce = (struct FdBadUse *)
+         VG_(get_error_extra)(err);
+      const char *error_string = VG_(get_error_string)(err);
+      if (xml) {
+        VG_(emit)("  <fd>%d</fd>\n", nce->fd);
+        if (nce->pathname)
+            VG_(emit)("  <path>%s</path>\n", nce->pathname);
+      }
+      VG_(emit)("%sFile descriptor %d %s%s\n", whatpre, nce->fd,
+          error_string, whatpost);
+      VG_(pp_ExeContext)(where);
+      /* If the file descriptor was never created we won't have
+         where_closed and where_opened. Only print them in a
+         use after close case.  */
+      if (nce->where_closed) {
+        VG_(emit)("%sPreviously closed%s\n", auxpre, auxpost);
+        VG_(pp_ExeContext)(nce->where_closed);
+      }
+      if (nce->where_opened) {
+        VG_(emit)("%sOriginally opened%s\n", auxpre, auxpost);
+        VG_(pp_ExeContext)(nce->where_opened);
+      }
+   } else {
+      vg_assert2 (False, "Unknown error kind: %d",
+                  VG_(get_error_kind)(err));
+   }
+}
+
+/* Called to see if there is any extra state to be saved with this
+   error. Must return the size of the extra struct.  */
+UInt fd_update_extra (const Error *err)
+{
+   if (VG_(get_error_kind)(err) == FdBadClose)
+      return sizeof (struct BadCloseExtra);
+   else if (VG_(get_error_kind)(err) == FdNotClosed)
+      return sizeof (struct NotClosedExtra);
+   else if (VG_(get_error_kind)(err) == FdBadUse)
+      return sizeof (struct FdBadUse);
+   else {
+      vg_assert2 (False, "Unknown error kind: %d",
+                  VG_(get_error_kind)(err));
+   }
 }
 
 static 
@@ -1109,8 +1406,7 @@ static void check_cmsg_for_fds(ThreadId tid, struct vki_msghdr *msg)
 }
 
 /* GrP kernel ignores sa_len (at least on Darwin); this checks the rest */
-static
-void pre_mem_read_sockaddr ( ThreadId tid,
+void ML_(pre_mem_read_sockaddr) ( ThreadId tid,
                              const HChar *description,
                              struct vki_sockaddr *sa, UInt salen )
 {
@@ -1130,8 +1426,8 @@ void pre_mem_read_sockaddr ( ThreadId tid,
 
    VG_(sprintf) ( outmsg, description, "sa_family" );
    PRE_MEM_READ( outmsg, (Addr) &sa->sa_family, sizeof(vki_sa_family_t));
-#if defined(VGO_dragonfly)
-   VG_(sprintf) ( outmsg, description, ".sa_len" );
+#if defined(VGO_freebsd)|| defined(VGO_dragonfly)
+   VG_(sprintf) ( outmsg, description, "sa_len" );
    PRE_MEM_READ( outmsg, (Addr) &sa->sa_len, sizeof(char));
 #endif
 
@@ -1359,6 +1655,20 @@ static Addr do_brk ( Addr newbrk, ThreadId tid )
    return VG_(brk_limit);
 }
 
+static
+const OpenFd *ML_(find_OpenFd)(Int fd)
+{
+   OpenFd *i = allocated_fds;
+
+   while (i) {
+     if (i->fd == fd)
+           return i;
+     i = i->next;
+   }
+
+   return NULL;
+}
+
 
 /* ---------------------------------------------------------------------
    Vet file descriptors for sanity
@@ -1422,10 +1732,50 @@ Bool ML_(fd_allowed)(Int fd, const HChar *syscallname, ThreadId tid,
       client is exactly what we don't want.  */
 
    /* croak? */
-   if ((!allowed) && VG_(showing_core_errors)() ) {
+   if (VG_(clo_track_fds) && allowed
+       && !isNewFd && (VG_(strcmp)("close", syscallname) != 0)) {
+     const OpenFd *openbadfd = ML_(find_OpenFd)(fd);
+     if (!openbadfd) {
+       /* File descriptor which was never created (or inherited).  */
+       struct FdBadUse badfd;
+       badfd.fd = fd;
+       badfd.pathname = NULL;
+       badfd.description = NULL;
+       badfd.where_opened = NULL;
+       badfd.where_closed = NULL;
+       VG_(maybe_record_error)(tid, FdBadUse, 0,
+           "was never created", &badfd);
+
+     } else if (openbadfd->fd_closed) {
+       /* Already closed file descriptor is being used.  */
+       struct FdBadUse badfd;
+       badfd.fd = fd;
+       badfd.pathname = openbadfd->pathname;
+       badfd.description = openbadfd->description;
+       badfd.where_opened = openbadfd->where;
+       badfd.where_closed = openbadfd->where_closed;
+       VG_(maybe_record_error)(tid, FdBadUse, 0,
+           "was closed already", &badfd);
+     }
+   }
+   if ((!allowed) && !isNewFd) {
+      if (VG_(clo_track_fds)) {
+         struct FdBadUse badfd;
+         badfd.fd = fd;
+         badfd.pathname = NULL;
+         badfd.description = NULL;
+         badfd.where_opened = NULL;
+         badfd.where_closed = NULL;
+         VG_(maybe_record_error)(tid, FdBadUse, 0,
+                                 "Invalid file descriptor", &badfd);
+      } else if (VG_(showing_core_warnings) ()) {
+         // XXX legacy warnings, will be removed eventually
       VG_(message)(Vg_UserMsg, 
          "Warning: invalid file descriptor %d in syscall %s()\n",
          fd, syscallname);
+      }
+
+      if (VG_(showing_core_warnings) ()) {
       if (fd == VG_(log_output_sink).fd && VG_(log_output_sink).fd >= 0)
 	 VG_(message)(Vg_UserMsg, 
             "   Use --log-fd=<number> to select an alternative log fd.\n");
@@ -1433,17 +1783,23 @@ Bool ML_(fd_allowed)(Int fd, const HChar *syscallname, ThreadId tid,
 	 VG_(message)(Vg_UserMsg, 
             "   Use --xml-fd=<number> to select an alternative XML "
             "output fd.\n");
-      // DDD: consider always printing this stack trace, it's useful.
-      // Also consider also making this a proper core error, ie.
-      // suppressible and all that.
-      if (VG_(clo_verbosity) > 1) {
+
+         // XXX This is the legacy warning, will be removed eventually
+         if (VG_(clo_verbosity) > 1 && !VG_(clo_track_fds)) {
          VG_(get_and_pp_StackTrace)(tid, VG_(clo_backtrace_size));
+         }
       }
    }
 
    return allowed;
 }
 
+void ML_(fd_at_check_allowed)(Int fd, const HChar* path, const HChar* function_name, ThreadId tid, SyscallStatus* status)
+{
+   if ((ML_(safe_to_deref) (path, 1)) && (path[0] != '/'))
+      if ((fd != VKI_AT_FDCWD) && !ML_(fd_allowed)(fd, function_name, tid, False))
+           SET_STATUS_Failure(VKI_EBADF);
+}
 
 /* ---------------------------------------------------------------------
    Deal with a bunch of socket-related syscalls
@@ -1471,6 +1827,7 @@ ML_(generic_POST_sys_socketpair) ( ThreadId tid,
    Int fd1 = ((Int*)arg3)[0];
    Int fd2 = ((Int*)arg3)[1];
    vg_assert(!sr_isError(res)); /* guaranteed by caller */
+   // @todo PJF this needs something like POST_newFd_RES for the two fds?
    POST_MEM_WRITE( arg3, 2*sizeof(int) );
    if (!ML_(fd_allowed)(fd1, "socketcall.socketpair", tid, True) ||
        !ML_(fd_allowed)(fd2, "socketcall.socketpair", tid, True)) {
@@ -1512,7 +1869,7 @@ ML_(generic_PRE_sys_bind) ( ThreadId tid,
 {
    /* int bind(int sockfd, struct sockaddr *my_addr, 
                int addrlen); */
-   pre_mem_read_sockaddr( 
+   ML_(pre_mem_read_sockaddr) (
       tid, "socketcall.bind(my_addr.%s)",
       (struct vki_sockaddr *) arg1, arg2 
    );
@@ -1568,7 +1925,7 @@ ML_(generic_PRE_sys_sendto) ( ThreadId tid,
    PRE_MEM_READ( "socketcall.sendto(msg)",
                  arg1, /* msg */
                  arg2  /* len */ );
-   pre_mem_read_sockaddr( 
+   ML_(pre_mem_read_sockaddr) (
       tid, "socketcall.sendto(to.%s)",
       (struct vki_sockaddr *) arg4, arg5
    );
@@ -1647,7 +2004,7 @@ ML_(generic_POST_sys_recv) ( ThreadId tid,
                              UWord res,
                              UWord arg0, UWord arg1, UWord arg2 )
 {
-   if (res >= 0 && arg1 != 0) {
+   if (arg1 != 0) {
       POST_MEM_WRITE( arg1, /* buf */
                       arg2  /* len */ );
    }
@@ -1661,7 +2018,7 @@ ML_(generic_PRE_sys_connect) ( ThreadId tid,
 {
    /* int connect(int sockfd, 
                   struct sockaddr *serv_addr, int addrlen ); */
-   pre_mem_read_sockaddr( tid,
+   ML_(pre_mem_read_sockaddr) ( tid,
                           "socketcall.connect(serv_addr.%s)",
                           (struct vki_sockaddr *) arg1, arg2);
 }
@@ -1811,16 +2168,16 @@ UInt get_sem_count( Int semid )
       return 0;
 
    return buf.sem_nsems;
-
-#  elif defined(__NR___semctl)
+#  elif defined(__NR___semctl) /* FreeBSD */
    struct vki_semid_ds buf;
    arg.buf = &buf;
-   res = VG_(do_syscall4)(__NR___semctl, semid, 0, VKI_IPC_STAT, *(UWord *)&arg);
+   res = VG_(do_syscall4)(__NR___semctl, semid, 0, VKI_IPC_STAT, (RegWord)&arg);
+
    if (sr_isError(res))
       return 0;
 
+   // both clang-tidy and coverity complain about this but I think they are both wrong
    return buf.sem_nsems;
-
 #  elif defined(__NR_semsys) /* Solaris */
    struct vki_semid_ds buf;
    arg.buf = &buf;
@@ -1859,11 +2216,15 @@ ML_(generic_PRE_sys_semctl) ( ThreadId tid,
    case VKI_IPC_INFO|VKI_IPC_64:
    case VKI_SEM_INFO|VKI_IPC_64:
 #endif
-#if !defined(VGO_dragonfly)
+#if defined(VGO_freebsd)|| defined(VGO_dragonfly)
+      PRE_MEM_WRITE( "semctl(IPC_INFO, arg.buf)",
+                     (Addr)arg.buf, sizeof(struct vki_semid_ds) );
+#else
       PRE_MEM_WRITE( "semctl(IPC_INFO, arg.buf)",
                      (Addr)arg.buf, sizeof(struct vki_seminfo) );
 #endif
       break;
+#endif
 
    case VKI_IPC_STAT:
 #if defined(VKI_SEM_STAT)
@@ -1941,7 +2302,9 @@ ML_(generic_POST_sys_semctl) ( ThreadId tid,
    case VKI_IPC_INFO|VKI_IPC_64:
    case VKI_SEM_INFO|VKI_IPC_64:
 #endif
-#if !defined(VGO_dragonfly)
+#if defined(VGO_freebsd)|| defined(VGO_dragonfly)
+      POST_MEM_WRITE( (Addr)arg.buf, sizeof(struct vki_semid_ds) );
+#else
       POST_MEM_WRITE( (Addr)arg.buf, sizeof(struct vki_seminfo) );
 #endif
       break;
@@ -1975,7 +2338,6 @@ ML_(generic_POST_sys_semctl) ( ThreadId tid,
       break;
    }
 }
-#endif
 
 /* ------ */
 
@@ -1984,11 +2346,27 @@ ML_(generic_POST_sys_semctl) ( ThreadId tid,
 static
 SizeT get_shm_size ( Int shmid )
 {
-#if defined(__NR_shmctl)
+   /*
+    * The excluded platforms below gained direct shmctl in Linux 5.1. Keep
+    * using ipc-multiplexed shmctl to keep compatibility with older kernel
+    * versions.
+    */
+#if defined(__NR_shmctl) && \
+    !defined(VGP_x86_linux) && !defined(VGP_mips32_linux) && \
+    !defined(VGP_ppc32_linux) && !defined(VGP_ppc64be_linux) && \
+    !defined(VGP_ppc64le_linux) && !defined(VGP_s390x_linux)
 #  ifdef VKI_IPC_64
    struct vki_shmid64_ds buf;
-#    if defined(VGP_amd64_linux) || defined(VGP_arm64_linux)
-     /* See bug 222545 comment 7 */
+     /*
+      * On Linux, the following ABIs use old shmid_ds by default with direct
+      * shmctl and require IPC_64 for shmid64_ds (i.e. the direct syscall is
+      * mapped to sys_old_shmctl):
+      *    alpha, arm, microblaze, mips n32/n64, xtensa
+      * Other Linux ABIs use shmid64_ds by default and do not recognize IPC_64
+      * with the direct shmctl syscall (but still recognize it for the
+      * ipc-multiplexed version if that exists for the ABI).
+      */
+#    if defined(VGO_linux) && !defined(VGP_arm_linux) && !defined(VGP_mips64_linux)
      SysRes __res = VG_(do_syscall3)(__NR_shmctl, shmid, 
                                      VKI_IPC_STAT, (UWord)&buf);
 #    else
@@ -2125,7 +2503,7 @@ ML_(generic_PRE_sys_shmctl) ( ThreadId tid,
    switch (arg1 /* cmd */) {
 #if defined(VKI_IPC_INFO)
    case VKI_IPC_INFO:
-#   if defined(VGO_dragonfly)
+#   if defined(VGO_freebsd)|| defined(VGO_dragonfly)
       PRE_MEM_WRITE( "shmctl(IPC_INFO, buf)",
                      arg2, sizeof(struct vki_shmid_ds) );
 #   else
@@ -2189,7 +2567,7 @@ ML_(generic_POST_sys_shmctl) ( ThreadId tid,
    switch (arg1 /* cmd */) {
 #if defined(VKI_IPC_INFO)
    case VKI_IPC_INFO:
-#   if defined(VGO_dragonfly)
+#   if defined(VGO_freebsd)|| defined(VGO_dragonfly)
       POST_MEM_WRITE( arg2, sizeof(struct vki_shmid_ds) );
 #   else
       POST_MEM_WRITE( arg2, sizeof(struct vki_shminfo) );
@@ -2281,13 +2659,38 @@ ML_(generic_PRE_sys_mmap) ( ThreadId tid,
    VG_(core_panic)("can't use ML_(generic_PRE_sys_mmap) on Darwin");
 #  endif
 
+#if !defined(VKI_MAP_GUARD)
+// on platforms without MAP_GUARD the compiler should optimise away
+// the term using it below as it will always be true
+#define VKI_MAP_GUARD 0
+#endif
+
+#if !defined(VKI_MAP_STACK)
+// as above
+#define VKI_MAP_STACK 0
+#endif
+
+   /* fd (arg5) is only used when flags (arg4) does not contain
+      MAP_ANONYMOUS (or, on FreeBSD, MAP_GUARD and MAP_STACK).
+      ML_(fd_allowed) might just warn (with --track-fds)
+      and not fail, unless it is a Valgrind owned file descriptor.
+      So also check with fcntl (F_GETFD) to know if it really is a bad
+      fd. Fail early in that case with EBADF.  */
+   if (!(arg4 & VKI_MAP_ANONYMOUS)
+       && !(arg4 & VKI_MAP_GUARD)
+       && !(arg4 & VKI_MAP_STACK)
+       && (!ML_(fd_allowed)(arg5, "mmap", tid, False)
+           || VG_(fcntl) (arg5, VKI_F_GETFD, 0) < 0)) {
+      return VG_(mk_SysRes_Error)( VKI_EBADF );
+   }
+
    if (arg2 == 0) {
       /* SuSV3 says: If len is zero, mmap() shall fail and no mapping
          shall be established. */
       return VG_(mk_SysRes_Error)( VKI_EINVAL );
    }
 
-   if (arg4 & VKI_MAP_FIXED && !VG_IS_PAGE_ALIGNED(arg1)) {
+   if (!VG_IS_PAGE_ALIGNED(arg1)) {
       /* zap any misaligned addresses. */
       /* SuSV3 says misaligned addresses only cause the MAP_FIXED case
          to fail.   Here, we catch them all. */
@@ -2306,10 +2709,15 @@ ML_(generic_PRE_sys_mmap) ( ThreadId tid,
       (fixed/hint/any), and ask aspacem what we should do. */
    mreq.start = arg1;
    mreq.len   = arg2;
-   if (arg4 & VKI_MAP_FIXED) {
+   if ((arg4 & VKI_MAP_FIXED)
+#if defined(VKI_MAP_FIXED_NOREPLACE)
+       || (arg4 & VKI_MAP_FIXED_NOREPLACE)
+#endif
+      )
+   {
       mreq.rkind = MFixed;
    } else
-#if defined(VKI_MAP_ALIGN) /* Solaris specific */
+#if defined(VGO_solaris) && defined(VKI_MAP_ALIGN)
    if (arg4 & VKI_MAP_ALIGN) {
       mreq.rkind = MAlign;
       if (mreq.start == 0) {
@@ -2317,6 +2725,15 @@ ML_(generic_PRE_sys_mmap) ( ThreadId tid,
       }
       /* VKI_MAP_FIXED and VKI_MAP_ALIGN don't like each other. */
       arg4 &= ~VKI_MAP_ALIGN;
+   } else
+#endif
+#if defined(VGO_freebsd)
+   if (arg4 & VKI_MAP_ALIGNMENT_MASK) {
+      mreq.rkind = MAlign;
+      if (mreq.start == 0U) {
+         mreq.start = 1U << (arg4 >> VKI_MAP_ALIGNMENT_SHIFT);
+      }
+      arg4 &= ~VKI_MAP_ALIGNMENT_MASK;
    } else
 #endif
    if (arg1 != 0) {
@@ -2329,6 +2746,11 @@ ML_(generic_PRE_sys_mmap) ( ThreadId tid,
    advised = VG_(am_get_advisory)( &mreq, True/*client*/, &mreq_ok );
    if (!mreq_ok) {
       /* Our request was bounced, so we'd better fail. */
+#if defined(VKI_MAP_FIXED_NOREPLACE)
+      if (arg4 & VKI_MAP_FIXED_NOREPLACE) {
+         return VG_(mk_SysRes_Error)( VKI_EEXIST );
+      }
+#endif
       return VG_(mk_SysRes_Error)( VKI_EINVAL );
    }
 
@@ -2360,6 +2782,13 @@ ML_(generic_PRE_sys_mmap) ( ThreadId tid,
    if ((arg4 & VKI_MAP_32BIT) && !(arg4 & VKI_MAP_FIXED)
        && sr_isError(sres)) {
       return VG_(mk_SysRes_Error)( VKI_ENOMEM );
+   }
+#  endif
+
+#  if defined(VKI_MAP_FIXED_NOREPLACE)
+   /* FIXED_NOREPLACE is fatal, no retries. */
+   if ((arg4 & VKI_MAP_FIXED_NOREPLACE) && sr_isError(sres)) {
+      return VG_(mk_SysRes_Error)( VKI_EEXIST );
    }
 #  endif
 
@@ -2488,7 +2917,6 @@ ML_(generic_PRE_sys_mmap) ( ThreadId tid,
 #define PRE(name)      DEFN_PRE_TEMPLATE(generic, name)
 #define POST(name)     DEFN_POST_TEMPLATE(generic, name)
 
-#if !defined(VGO_dragonfly) /* On dragonfly, exit(2) is all-threads shutdown */
 PRE(sys_exit)
 {
    ThreadState* tst;
@@ -2502,7 +2930,6 @@ PRE(sys_exit)
    tst->os_state.exitcode = ARG1;
    SET_STATUS_Success(0);
 }
-#endif
 
 PRE(sys_ni_syscall)
 {
@@ -2523,6 +2950,8 @@ PRE(sys_fsync)
    *flags |= SfMayBlock;
    PRINT("sys_fsync ( %" FMT_REGWORD "u )", ARG1);
    PRE_REG_READ1(long, "fsync", unsigned int, fd);
+   if ( !ML_(fd_allowed)(ARG1, "fsync", tid, False) )
+      SET_STATUS_Failure( VKI_EBADF );
 }
 
 PRE(sys_fdatasync)
@@ -2530,6 +2959,8 @@ PRE(sys_fdatasync)
    *flags |= SfMayBlock;
    PRINT("sys_fdatasync ( %" FMT_REGWORD "u )", ARG1);
    PRE_REG_READ1(long, "fdatasync", unsigned int, fd);
+   if ( !ML_(fd_allowed)(ARG1, "fdatasync", tid, False) )
+      SET_STATUS_Failure( VKI_EBADF );
 }
 
 PRE(sys_msync)
@@ -2640,6 +3071,14 @@ PRE(sys_setitimer)
                          &(value->it_interval));
       PRE_timeval_READ( "setitimer(&value->it_value)",
                          &(value->it_value));
+      // "Setting it_value to 0 disables a timer"
+      // poll for signals in that case
+      if (ML_(safe_to_deref)(value, sizeof(*value))) {
+         if (value->it_value.tv_sec == 0 &&
+             value->it_value.tv_usec == 0) {
+            *flags |= SfPollAfter;
+         }
+      }
    }
    if (ARG3 != (Addr)NULL) {
       struct vki_itimerval *ovalue = (struct vki_itimerval*)(Addr)ARG3;
@@ -2673,15 +3112,16 @@ PRE(sys_madvise)
                         ARG1, ARG2, SARG3);
    PRE_REG_READ3(long, "madvise",
                  unsigned long, start, vki_size_t, length, int, advice);
-}
-
-PRE(sys_mcontrol)
-{
-   *flags |= SfMayBlock;
-   PRINT("sys_mcontrol ( %#" FMT_REGWORD "x, %" FMT_REGWORD "u, %ld, %ld )",
-                        ARG1, ARG2, SARG3, SARG4);
-   PRE_REG_READ4(long, "mcontrol",
-                 unsigned long, start, vki_size_t, length, int, advice, vki_off_t, val);
+   /* Ugly hack to try to bypass the problem of guard pages not being
+      understood by valgrind aspace manager.
+      By making the syscall fail, we expect glibc to fallback
+      on implementing guard pages with mprotect PROT_NONE to ensure
+      the valgrind address space manager is not confused wrongly
+      believing the guard page is rw. */
+#ifdef VKI_MADV_GUARD_INSTALL
+   if (ARG3 == VKI_MADV_GUARD_INSTALL)
+      SET_STATUS_Failure( VKI_EINVAL );
+#endif
 }
 
 #if HAVE_MREMAP
@@ -2717,6 +3157,13 @@ PRE(sys_nice)
    PRE_REG_READ1(long, "nice", int, inc);
 }
 
+PRE(sys_mlock2)
+{
+   *flags |= SfMayBlock;
+   PRINT("sys_mlock2 ( %#" FMT_REGWORD "x, %" FMT_REGWORD "u, %" FMT_REGWORD "u )", ARG1, ARG2, ARG3);
+   PRE_REG_READ2(int, "mlock2", void*, addr, vki_size_t, len);
+}
+
 PRE(sys_mlock)
 {
    *flags |= SfMayBlock;
@@ -2750,7 +3197,7 @@ PRE(sys_getpriority)
    PRE_REG_READ2(long, "getpriority", int, which, int, who);
 }
 
-#if defined(VGO_linux)
+#if !defined(VGO_freebsd)&& !defined(VGO_dragonfly)
 PRE(sys_pwrite64)
 {
    *flags |= SfMayBlock;
@@ -2780,6 +3227,7 @@ PRE(sys_sync)
    PRE_REG_READ0(long, "sync");
 }
 
+#if !defined(VGP_nanomips_linux)
 PRE(sys_fstatfs)
 {
    FUSE_COMPATIBLE_MAY_BLOCK();
@@ -2787,6 +3235,8 @@ PRE(sys_fstatfs)
    PRE_REG_READ2(long, "fstatfs",
                  unsigned int, fd, struct statfs *, buf);
    PRE_MEM_WRITE( "fstatfs(buf)", ARG2, sizeof(struct vki_statfs) );
+   if ( !ML_(fd_allowed)(ARG1, "fstatfs", tid, False) )
+      SET_STATUS_Failure( VKI_EBADF );
 }
 
 POST(sys_fstatfs)
@@ -2802,11 +3252,14 @@ PRE(sys_fstatfs64)
    PRE_REG_READ3(long, "fstatfs64",
                  unsigned int, fd, vki_size_t, size, struct statfs64 *, buf);
    PRE_MEM_WRITE( "fstatfs64(buf)", ARG3, ARG2 );
+   if ( !ML_(fd_allowed)(ARG1, "fstatfs64", tid, False) )
+      SET_STATUS_Failure( VKI_EBADF );
 }
 POST(sys_fstatfs64)
 {
    POST_MEM_WRITE( ARG3, ARG2 );
 }
+#endif
 
 PRE(sys_getsid)
 {
@@ -2814,7 +3267,7 @@ PRE(sys_getsid)
    PRE_REG_READ1(long, "getsid", vki_pid_t, pid);
 }
 
-#if defined(VGO_linux)
+#if !defined(VGO_freebsd)&& !defined(VGO_dragonfly)
 PRE(sys_pread64)
 {
    *flags |= SfMayBlock;
@@ -2859,6 +3312,8 @@ PRE(sys_flock)
    *flags |= SfMayBlock;
    PRINT("sys_flock ( %" FMT_REGWORD "u, %" FMT_REGWORD "u )", ARG1, ARG2 );
    PRE_REG_READ2(long, "flock", unsigned int, fd, unsigned int, operation);
+   if ( !ML_(fd_allowed)(ARG1, "flock", tid, False) )
+      SET_STATUS_Failure( VKI_EBADF );
 }
 
 // Pre_read a char** argument.
@@ -2894,9 +3349,10 @@ void VG_(reap_threads)(ThreadId self)
    vg_assert(i_am_the_only_thread());
 }
 
-// XXX: prototype here seemingly doesn't match the prototype for i386-linux,
-// but it seems to work nonetheless...
-PRE(sys_execve)
+/* This handles the common part of the PRE macro for execve and execveat. */
+void handle_pre_sys_execve(ThreadId tid, SyscallStatus *status, Addr pathname,
+                           Addr arg_2, Addr arg_3, ExecveType execveType,
+                           Bool check_pathptr)
 {
    HChar*       path = NULL;       /* path to executable */
    HChar**      envp = NULL;
@@ -2907,27 +3363,60 @@ PRE(sys_execve)
    Int          i, j, tot_args;
    SysRes       res;
    Bool         setuid_allowed, trace_this_child;
+   const char   *str;
+   char         str2[30], str3[30];
+   Addr         arg_2_check = arg_2;
 
-   PRINT("sys_execve ( %#" FMT_REGWORD "x(%s), %#" FMT_REGWORD "x, %#"
-         FMT_REGWORD "x )", ARG1, (HChar*)(Addr)ARG1, ARG2, ARG3);
-   PRE_REG_READ3(vki_off_t, "execve",
-                 char *, filename, char **, argv, char **, envp);
-   PRE_MEM_RASCIIZ( "execve(filename)", ARG1 );
-   if (ARG2 != 0) {
-      /* At least the terminating NULL must be addressable. */
-      if (!ML_(safe_to_deref)((HChar **) (Addr)ARG2, sizeof(HChar *))) {
-         SET_STATUS_Failure(VKI_EFAULT);
-         return;
-      }
-      ML_(pre_argv_envp)( ARG2, tid, "execve(argv)", "execve(argv[i])" );
+   switch (execveType) {
+   case EXECVE:
+      str = "execve";
+      break;
+   case EXECVEAT:
+      str = "execveat";
+      break;
+   case FEXECVE:
+      str = "fexecve";
+      break;
+   default:
+      vg_assert(False);
    }
-   if (ARG3 != 0) {
-      /* At least the terminating NULL must be addressable. */
-      if (!ML_(safe_to_deref)((HChar **) (Addr)ARG3, sizeof(HChar *))) {
+
+   VG_(strcpy)(str2, str);
+   VG_(strcpy)(str3, str);
+
+   VG_(strcat)(str2, "(argv)");
+   VG_(strcat)(str3, "(argv[0])");
+
+   /* argv[] should not be NULL and valid.  */
+   PRE_MEM_READ(str2, arg_2_check, sizeof(Addr));
+
+   /* argv[0] should not be NULL and valid.  */
+   if (ML_(safe_to_deref)((HChar **)arg_2_check, sizeof(HChar *))) {
+      Addr argv0 = *(Addr*)arg_2_check;
+      PRE_MEM_RASCIIZ( str3, argv0 );
+      /* The rest of argv can be NULL or a valid string pointer.  */
+      if (VG_(am_is_valid_for_client)(arg_2_check, sizeof(HChar), VKI_PROT_READ)) {
+         arg_2_check += sizeof(HChar*);
+         str3[VG_(strlen)(str)] = '\0';
+         VG_(strcat)(str3, "(argv[i])");
+         ML_(pre_argv_envp)( arg_2_check, tid, str2, str3 );
+      }
+   } else {
          SET_STATUS_Failure(VKI_EFAULT);
          return;
       }
-      ML_(pre_argv_envp)( ARG3, tid, "execve(envp)", "execve(envp[i])" );
+   // Reset helper strings to syscall name.
+   str2[VG_(strlen)(str)] = '\0';
+   str3[VG_(strlen)(str)] = '\0';
+   if (arg_3 != 0) {
+      /* At least the terminating NULL must be addressable. */
+      if (!ML_(safe_to_deref)((HChar **)arg_3, sizeof(HChar *))) {
+         SET_STATUS_Failure(VKI_EFAULT);
+         return;
+      }
+      VG_(strcat)(str2, "(envp)");
+      VG_(strcat)(str3, "(envp[i])");
+      ML_(pre_argv_envp)( arg_3, tid, str2, str3 );
    }
 
    vg_assert(VG_(is_valid_tid)(tid));
@@ -2940,35 +3429,36 @@ PRE(sys_execve)
       an effort to check that the execve will work before actually
       doing it. */
 
-   /* Check that the name at least begins in client-accessible storage. */
-   if (ARG1 == 0 /* obviously bogus */
-       || !VG_(am_is_valid_for_client)( ARG1, 1, VKI_PROT_READ )) {
+   /* Check that the name at least begins in client-accessible storage.
+      If we didn't create it ourselves in execveat. */
+   if (check_pathptr
+       && !VG_(am_is_valid_for_client)( pathname, 1, VKI_PROT_READ )) {
       SET_STATUS_Failure( VKI_EFAULT );
       return;
    }
 
    // debug-only printing
    if (0) {
-      VG_(printf)("ARG1 = %p(%s)\n", (void*)(Addr)ARG1, (HChar*)(Addr)ARG1);
-      if (ARG2) {
-         VG_(printf)("ARG2 = ");
+      VG_(printf)("pathname = %p(%s)\n", (void*)pathname, (HChar*)pathname);
+      if (arg_2) {
+         VG_(printf)("arg_2 = ");
          Int q;
-         HChar** vec = (HChar**)(Addr)ARG2;
+         HChar** vec = (HChar**)arg_2;
          for (q = 0; vec[q]; q++)
             VG_(printf)("%p(%s) ", vec[q], vec[q]);
          VG_(printf)("\n");
       } else {
-         VG_(printf)("ARG2 = null\n");
+         VG_(printf)("arg_2 = null\n");
       }
    }
 
    // Decide whether or not we want to follow along
    { // Make 'child_argv' be a pointer to the child's arg vector
      // (skipping the exe name)
-     const HChar** child_argv = (const HChar**)(Addr)ARG2;
+     const HChar** child_argv = (const HChar**)arg_2;
      if (child_argv && child_argv[0] == NULL)
         child_argv = NULL;
-     trace_this_child = VG_(should_we_trace_this_child)( (HChar*)(Addr)ARG1,
+     trace_this_child = VG_(should_we_trace_this_child)( (HChar*)pathname,
                                                           child_argv );
    }
 
@@ -2976,7 +3466,7 @@ PRE(sys_execve)
    // ok, etc.  We allow setuid executables to run only in the case when
    // we are not simulating them, that is, they to be run natively.
    setuid_allowed = trace_this_child  ? False  : True;
-   res = VG_(pre_exec_check)((const HChar *)(Addr)ARG1, NULL, setuid_allowed);
+   res = VG_(pre_exec_check)((const HChar *)pathname, NULL, setuid_allowed);
    if (sr_isError(res)) {
       SET_STATUS_Failure( sr_Err(res) );
       return;
@@ -2993,7 +3483,7 @@ PRE(sys_execve)
    }
 
    /* After this point, we can't recover if the execve fails. */
-   VG_(debugLog)(1, "syswrap", "Exec of %s\n", (HChar*)(Addr)ARG1);
+   VG_(debugLog)(1, "syswrap", "Exec of %s\n", (HChar*)pathname);
 
    
    // Terminate gdbserver if it is active.
@@ -3029,7 +3519,7 @@ PRE(sys_execve)
       }
 
    } else {
-      path = (HChar*)(Addr)ARG1;
+      path = (HChar*)pathname;
    }
 
    // Set up the child's environment.
@@ -3043,29 +3533,29 @@ PRE(sys_execve)
    //
    // Then, if tracing the child, set VALGRIND_LIB for it.
    //
-   if (ARG3 == 0) {
+   if (arg_3 == 0) {
       envp = NULL;
    } else {
-      envp = VG_(env_clone)( (HChar**)(Addr)ARG3 );
+      envp = VG_(env_clone)( (HChar**)arg_3 );
       if (envp == NULL) goto hosed;
       VG_(env_remove_valgrind_env_stuff)( envp, True /*ro_strings*/, NULL );
    }
 
    if (trace_this_child) {
-      // Set VALGRIND_LIB in ARG3 (the environment)
+      // Set VALGRIND_LIB in arg_3 (the environment)
       VG_(env_setenv)( &envp, VALGRIND_LIB, VG_(libdir));
    }
 
    // Set up the child's args.  If not tracing it, they are
-   // simply ARG2.  Otherwise, they are
+   // simply arg_2.  Otherwise, they are
    //
-   // [launcher_basename] ++ VG_(args_for_valgrind) ++ [ARG1] ++ ARG2[1..]
+   // [launcher_basename] ++ VG_(args_for_valgrind) ++ [pathname] ++ arg_2[1..]
    //
    // except that the first VG_(args_for_valgrind_noexecpass) args
    // are omitted.
    //
    if (!trace_this_child) {
-      argv = (HChar**)(Addr)ARG2;
+      argv = (HChar**)arg_2;
    } else {
       vg_assert( VG_(args_for_valgrind) );
       vg_assert( VG_(args_for_valgrind_noexecpass) >= 0 );
@@ -3080,7 +3570,7 @@ PRE(sys_execve)
       // name of client exe
       tot_args++;
       // args for client exe, skipping [0]
-      arg2copy = (HChar**)(Addr)ARG2;
+      arg2copy = (HChar**)arg_2;
       if (arg2copy && arg2copy[0]) {
          for (i = 1; arg2copy[i]; i++)
             tot_args++;
@@ -3096,7 +3586,7 @@ PRE(sys_execve)
             continue;
          argv[j++] = * (HChar**) VG_(indexXA)( VG_(args_for_valgrind), i );
       }
-      argv[j++] = (HChar*)(Addr)ARG1;
+      argv[j++] = (HChar*)pathname;
       if (arg2copy && arg2copy[0])
          for (i = 1; arg2copy[i]; i++)
             argv[j++] = arg2copy[i];
@@ -3160,9 +3650,9 @@ PRE(sys_execve)
             VG_(printf)("env: %s\n", *cpp);
    }
 
+   // always execute this because it's executing valgrind, not the "target" exe
    SET_STATUS_from_SysRes( 
-      VG_(do_syscall3)(__NR_execve, (UWord)path, (UWord)argv, (UWord)envp) 
-   );
+      VG_(do_syscall3)(__NR_execve, (UWord)path, (UWord)argv, (UWord)envp));
 
    /* If we got here, then the execve failed.  We've already made way
       too much of a mess to continue, so we have to abort. */
@@ -3170,16 +3660,35 @@ PRE(sys_execve)
    vg_assert(FAILURE);
    VG_(message)(Vg_UserMsg, "execve(%#" FMT_REGWORD "x(%s), %#" FMT_REGWORD
                 "x, %#" FMT_REGWORD "x) failed, errno %lu\n",
-                ARG1, (HChar*)(Addr)ARG1, ARG2, ARG3, ERR);
+                pathname, (HChar*)pathname, arg_2, arg_3, ERR);
    VG_(message)(Vg_UserMsg, "EXEC FAILED: I can't recover from "
                             "execve() failing, so I'm dying.\n");
    VG_(message)(Vg_UserMsg, "Add more stringent tests in PRE(sys_execve), "
                             "or work out how to recover.\n");
    VG_(exit)(101);
+
+}
+
+// XXX: prototype here seemingly doesn't match the prototype for i386-linux,
+// but it seems to work nonetheless...
+PRE(sys_execve)
+{
+   PRINT("sys_execve ( %#" FMT_REGWORD "x(%s), %#" FMT_REGWORD "x, %#"
+         FMT_REGWORD "x )", ARG1, (HChar*)(Addr)ARG1, ARG2, ARG3);
+   PRE_REG_READ3(vki_off_t, "execve",
+                 char *, filename, char **, argv, char **, envp);
+   PRE_MEM_RASCIIZ( "execve(filename)", ARG1 );
+
+   char *pathname = (char *)ARG1;
+   Addr arg_2 = (Addr)ARG2;
+   Addr arg_3 = (Addr)ARG3;
+
+   handle_pre_sys_execve(tid, status, (Addr)pathname, arg_2, arg_3, EXECVE, True);
 }
 
 PRE(sys_access)
 {
+   FUSE_COMPATIBLE_MAY_BLOCK();
    PRINT("sys_access ( %#" FMT_REGWORD "x(%s), %ld )", ARG1,
          (HChar*)(Addr)ARG1, SARG2);
    PRE_REG_READ2(long, "access", const char *, pathname, int, mode);
@@ -3285,11 +3794,13 @@ PRE(sys_close)
            allow that to be closed either. */
         || (ARG1 == 2/*stderr*/ && VG_(debugLog_getLevel)() > 0) )
       SET_STATUS_Failure( VKI_EBADF );
+   else {
+      /* We used to do close tracking in the POST handler, but that is
+         only called on success. Even if the close syscall fails the
+	 file descriptor is still really closed/invalid. So we do the
+	 recording and checking here.  */
+      if (VG_(clo_track_fds)) ML_(record_fd_close)(tid, ARG1);
 }
-
-POST(sys_close)
-{
-   if (VG_(clo_track_fds)) ML_(record_fd_close)(ARG1);
 }
 
 PRE(sys_dup)
@@ -3301,6 +3812,7 @@ PRE(sys_dup)
 POST(sys_dup)
 {
    vg_assert(SUCCESS);
+   POST_newFd_RES;
    if (!ML_(fd_allowed)(RES, "dup", tid, True)) {
       VG_(close)(RES);
       SET_STATUS_Failure( VKI_EMFILE );
@@ -3314,6 +3826,8 @@ PRE(sys_dup2)
 {
    PRINT("sys_dup2 ( %" FMT_REGWORD "u, %" FMT_REGWORD "u )", ARG1, ARG2);
    PRE_REG_READ2(long, "dup2", unsigned int, oldfd, unsigned int, newfd);
+   if (!ML_(fd_allowed)(ARG1, "dup2", tid, False))
+      SET_STATUS_Failure( VKI_EBADF );
    if (!ML_(fd_allowed)(ARG2, "dup2", tid, True))
       SET_STATUS_Failure( VKI_EBADF );
 }
@@ -3330,6 +3844,8 @@ PRE(sys_fchdir)
    FUSE_COMPATIBLE_MAY_BLOCK();
    PRINT("sys_fchdir ( %" FMT_REGWORD "u )", ARG1);
    PRE_REG_READ1(long, "fchdir", unsigned int, fd);
+   if ( !ML_(fd_allowed)(ARG1, "fchdir", tid, False) )
+      SET_STATUS_Failure( VKI_EBADF );
 }
 
 PRE(sys_fchown)
@@ -3339,6 +3855,8 @@ PRE(sys_fchown)
          FMT_REGWORD "u )", ARG1, ARG2, ARG3);
    PRE_REG_READ3(long, "fchown",
                  unsigned int, fd, vki_uid_t, owner, vki_gid_t, group);
+   if ( !ML_(fd_allowed)(ARG1, "fchown", tid, False) )
+      SET_STATUS_Failure( VKI_EBADF );
 }
 
 PRE(sys_fchmod)
@@ -3346,22 +3864,29 @@ PRE(sys_fchmod)
    FUSE_COMPATIBLE_MAY_BLOCK();
    PRINT("sys_fchmod ( %" FMT_REGWORD "u, %" FMT_REGWORD "u )", ARG1, ARG2);
    PRE_REG_READ2(long, "fchmod", unsigned int, fildes, vki_mode_t, mode);
+   if ( !ML_(fd_allowed)(ARG1, "fchmod", tid, False) )
+      SET_STATUS_Failure( VKI_EBADF );
 }
 
+#if !defined(VGP_nanomips_linux) && !defined (VGO_freebsd)
 PRE(sys_newfstat)
 {
    FUSE_COMPATIBLE_MAY_BLOCK();
    PRINT("sys_newfstat ( %" FMT_REGWORD "u, %#" FMT_REGWORD "x )", ARG1, ARG2);
    PRE_REG_READ2(long, "fstat", unsigned int, fd, struct stat *, buf);
    PRE_MEM_WRITE( "fstat(buf)", ARG2, sizeof(struct vki_stat) );
+   if ( !ML_(fd_allowed)(ARG1, "fstat", tid, False) )
+      SET_STATUS_Failure( VKI_EBADF );
 }
 
 POST(sys_newfstat)
 {
    POST_MEM_WRITE( ARG2, sizeof(struct vki_stat) );
 }
+#endif
 
-#if !defined(VGO_solaris) && !defined(VGP_arm64_linux)
+#if !defined(VGO_solaris) && !defined(VGP_arm64_linux) && \
+    !defined(VGP_nanomips_linux) && !defined(VGP_riscv64_linux)
 static vki_sigset_t fork_saved_mask;
 
 // In Linux, the sys_fork() function varies across architectures, but we
@@ -3386,7 +3911,7 @@ PRE(sys_fork)
 
    if (!SUCCESS) return;
 
-#if defined(VGO_linux) || defined(VGO_dragonfly)
+#if defined(VGO_linux) || defined(VGO_freebsd)|| defined(VGO_dragonfly)
    // RES is 0 for child, non-0 (the child's PID) for parent.
    is_child = ( RES == 0 ? True : False );
    child_pid = ( is_child ? -1 : RES );
@@ -3412,17 +3937,16 @@ PRE(sys_fork)
       VG_(sigprocmask)(VKI_SIG_SETMASK, &fork_saved_mask, NULL);
    }
 }
-#endif // !defined(VGO_solaris) && !defined(VGP_arm64_linux)
+#endif
 
-// ftruncate/truncate have padded arguments on Dragonfly.
-#if !defined(VGO_dragonfly)
 PRE(sys_ftruncate)
 {
    *flags |= SfMayBlock;
    PRINT("sys_ftruncate ( %" FMT_REGWORD "u, %" FMT_REGWORD "u )", ARG1, ARG2);
    PRE_REG_READ2(long, "ftruncate", unsigned int, fd, unsigned long, length);
+   if ( !ML_(fd_allowed)(ARG1, "ftruncate", tid, False) )
+      SET_STATUS_Failure( VKI_EBADF );
 }
-#endif
 
 PRE(sys_truncate)
 {
@@ -3448,6 +3972,8 @@ PRE(sys_ftruncate64)
    PRE_REG_READ2(long, "ftruncate64",
                  unsigned int,fd, UWord,length);
 #endif
+   if ( !ML_(fd_allowed)(ARG1, "ftruncate64", tid, False) )
+      SET_STATUS_Failure( VKI_EBADF );
 }
 
 PRE(sys_truncate64)
@@ -3478,12 +4004,203 @@ PRE(sys_getdents)
    PRE_MEM_WRITE( "getdents(dirp)", ARG2, ARG3 );
 }
 
+#if defined(VGO_linux) || defined(VGO_solaris)
+
+/* Check if the given file descriptor points to a /proc/PID/fd or /proc/PID/fdinfo directory.
+   Returns True if it's a directory we should filter Valgrind FDs from. */
+static Bool is_proc_fd_directory(Int fd)
+{
+   const HChar* path;
+   if (!VG_(resolve_filename)(fd, &path))
+      return False;
+   
+   HChar ppfd[32]; /* large enough for /proc/<pid>/fd and /proc/<pid>/fdinfo */
+   HChar ppfdinfo[32];
+   VG_(sprintf)(ppfd, "/proc/%d/fd", VG_(getpid)());
+   VG_(sprintf)(ppfdinfo, "/proc/%d/fdinfo", VG_(getpid)());
+
+   if (VG_(strcmp)(path, "/proc/self/fd") == 0
+		   || VG_(strcmp)(path, "/proc/self/fdinfo") == 0
+		   || VG_(strcmp)(path, ppfd) == 0
+		   || VG_(strcmp)(path, ppfdinfo) == 0)
+       return True;
+   
+   return False;
+}
+
+
+/* Helper function to decide if an FD entry should be kept */
+static Bool should_keep_fd_entry(const HChar *name)
+{
+   if (VG_(strcmp)(name, ".") == 0 || VG_(strcmp)(name, "..") == 0)
+      return True;
+
+   Bool is_numeric = True;
+   for (Int i = 0; name[i] != '\0'; i++) {
+      if (name[i] < '0' || name[i] > '9') {
+         is_numeric = False;
+         if (VG_(clo_verbosity) > 1)
+            VG_(dmsg)("Warning: Non-numeric entry '%s' found in /proc/*/fd directory\n", name);
+         break;
+      }
+   }
+
+   if (is_numeric && name[0] != '\0') {
+      Int fd_num = VG_(strtoll10)(name, NULL);
+      /* Hide FDs beyond soft limit or Valgrind's output FDs */
+      if (fd_num >= VG_(fd_soft_limit) ||
+          fd_num == VG_(log_output_sink).fd ||
+          fd_num == VG_(xml_output_sink).fd)
+         return False;
+   }
+
+   return True;
+}
+
+/* Make sure we really need the proc filtering using (32bit) getdents,
+   which not every linux arch implements.  */
+#if defined(__NR_getdents)
+
+/* Filter and compact dirent entries */
+static SizeT filter_dirent_entries(struct vki_dirent *dirp, SizeT orig_size)
+{
+   struct vki_dirent *dp = dirp;
+   struct vki_dirent *write_pos = dirp;
+   SizeT bytes_processed = 0;
+   SizeT new_size = 0;
+
+   while (bytes_processed < orig_size) {
+      if (should_keep_fd_entry(dp->d_name)) {
+         if (write_pos != dp)
+            VG_(memmove)(write_pos, dp, dp->d_reclen);
+         new_size += dp->d_reclen;
+         write_pos = (struct vki_dirent *)((HChar *)write_pos + dp->d_reclen);
+      }
+
+      bytes_processed += dp->d_reclen;
+      dp = (struct vki_dirent *)((HChar *)dp + dp->d_reclen);
+   }
+
+   return new_size;
+}
+#endif /* defined(__NR_getdents) */
+
+/* Filter and compact dirent64 entries */
+static SizeT filter_dirent64_entries(struct vki_dirent64 *dirp, SizeT orig_size)
+{
+   struct vki_dirent64 *dp = dirp;
+   struct vki_dirent64 *write_pos = dirp;
+   SizeT bytes_processed = 0;
+   SizeT new_size = 0;
+
+   while (bytes_processed < orig_size) {
+      if (should_keep_fd_entry(dp->d_name)) {
+         if (write_pos != dp)
+            VG_(memmove)(write_pos, dp, dp->d_reclen);
+         new_size += dp->d_reclen;
+         write_pos = (struct vki_dirent64 *)((HChar *)write_pos + dp->d_reclen);
+      }
+
+      bytes_processed += dp->d_reclen;
+      dp = (struct vki_dirent64 *)((HChar *)dp + dp->d_reclen);
+   }
+
+   return new_size;
+}
+
+/* Make sure we really need the proc filtering using (32bit) getdents,
+   which not every linux arch implements.  */
+#if defined(__NR_getdents)
+
+/* Filter out Valgrind's internal file descriptors from getdents results with refill capability.
+   When entries are filtered out, attempts to read more entries to avoid empty results.
+   Returns filtered size on success, or -1 if retry syscall failed. */
+static SizeT filter_valgrind_fds_from_getdents_with_refill(Int fd, struct vki_dirent *dirp, SizeT orig_size, SizeT buf_size, /*MOD*/SyscallStatus* status)
+{
+   SizeT new_size = filter_dirent_entries(dirp, orig_size);
+
+   /* If we filtered out everything, try to read more entries.
+      Since new_size == 0, the buffer is completely unused. */
+   while (new_size == 0) {
+      SysRes retry = VG_(do_syscall3)(__NR_getdents, fd, (UWord)dirp, buf_size);
+      if (sr_isError(retry)) {
+         /* Set the syscall status and return error indicator */
+         SET_STATUS_from_SysRes(retry);
+         return -1;
+      }
+      if (sr_Res(retry) == 0) {
+         /* Real EOF - stop trying */
+         break;
+      }
+
+      /* Filter the new batch */
+      SizeT retry_size = sr_Res(retry);
+      new_size = filter_dirent_entries(dirp, retry_size);
+   }
+
+   return new_size;
+}
+#endif /* defined(__NR_getdents) */
+
+/* Filter out Valgrind's internal file descriptors from getdents64 results with refill capability.
+   Same logic as getdents version but for 64-bit dirent structures.
+   Returns filtered size on success, or -1 if retry syscall failed. */
+static SizeT filter_valgrind_fds_from_getdents64_with_refill(Int fd, struct vki_dirent64 *dirp, SizeT orig_size, SizeT buf_size, /*MOD*/SyscallStatus* status)
+{
+   SizeT new_size = filter_dirent64_entries(dirp, orig_size);
+
+   /* If we filtered out everything, try to read more entries.
+      Since new_size == 0, the buffer is completely unused. */
+   while (new_size == 0) {
+      SysRes retry = VG_(do_syscall3)(__NR_getdents64, fd, (UWord)dirp, buf_size);
+      if (sr_isError(retry)) {
+         /* Set the syscall status and return error indicator */
+         SET_STATUS_from_SysRes(retry);
+         return -1;
+      }
+      if (sr_Res(retry) == 0) {
+         /* Real EOF - stop trying */
+         break;
+      }
+
+      /* Filter the new batch */
+      SizeT retry_size = sr_Res(retry);
+      new_size = filter_dirent64_entries(dirp, retry_size);
+   }
+
+   return new_size;
+}
+
+#endif /* defined(VGO_linux) || defined(VGO_solaris) */
+
 POST(sys_getdents)
 {
    vg_assert(SUCCESS);
-   if (RES > 0)
-      POST_MEM_WRITE( ARG2, RES );
+   if (RES > 0) {
+      SizeT result_size = RES;
+      
+      /* Make sure we really need the proc filtering using (32bit) getdents,
+         which not every linux arch implements.  */
+#if (defined(VGO_linux) || defined(VGO_solaris)) && defined(__NR_getdents)
+
+      /* Only filter Valgrind FDs when listing /proc/PID/fd or /proc/PID/fdinfo directories */
+      if (is_proc_fd_directory(ARG1)) {
+         SizeT filtered_size = filter_valgrind_fds_from_getdents_with_refill(ARG1, (struct vki_dirent *)ARG2, RES, ARG3, status);
+         if ((SizeT)filtered_size == (SizeT)-1) {
+            /* Error already set by filter function */
+            return;
 }
+         result_size = filtered_size;
+         if (result_size != RES)
+            SET_STATUS_Success(result_size);
+      }
+#endif /* (defined(VGO_linux) || defined(VGO_solaris)) && defined(__NR_getdents) */
+      
+      POST_MEM_WRITE( ARG2, result_size );
+   }
+}
+
+#if defined(__NR_getdents64)
 
 PRE(sys_getdents64)
 {
@@ -3499,9 +4216,26 @@ PRE(sys_getdents64)
 POST(sys_getdents64)
 {
    vg_assert(SUCCESS);
-   if (RES > 0)
-      POST_MEM_WRITE( ARG2, RES );
+   if (RES > 0) {
+      SizeT result_size = RES;
+      
+      /* Only filter Valgrind FDs when listing /proc/PID/fd or /proc/PID/fdinfo directories */
+      if (is_proc_fd_directory(ARG1)) {
+         SizeT filtered_size = filter_valgrind_fds_from_getdents64_with_refill(ARG1, (struct vki_dirent64 *)ARG2, RES, ARG3, status);
+         if ((SizeT)filtered_size == (SizeT)-1) {
+            /* Error already set by filter function */
+            return;
 }
+         result_size = filtered_size;
+         if (result_size != RES)
+            SET_STATUS_Success(result_size);
+      }
+      
+      POST_MEM_WRITE( ARG2, result_size );
+   }
+}
+
+#endif /* defined(__NR_getdents64) */
 
 PRE(sys_getgroups)
 {
@@ -3719,7 +4453,7 @@ void ML_(PRE_unknown_ioctl)(ThreadId tid, UWord request, UWord arg)
        * drivers with a large number of strange ioctl
        * commands becomes very tiresome.
        */
-   } else if (/* size == 0 || */ dir == _VKI_IOC_NONE) {
+   } else if (dir == _VKI_IOC_NONE && size > 0) {
       static UWord unknown_ioctl[10];
       static Int moans = sizeof(unknown_ioctl) / sizeof(unknown_ioctl[0]);
 
@@ -3733,7 +4467,7 @@ void ML_(PRE_unknown_ioctl)(ThreadId tid, UWord request, UWord arg)
                unknown_ioctl[i] = request;
                moans--;
                VG_(umsg)("Warning: noted but unhandled ioctl 0x%lx"
-                         " with no size/direction hints.\n", request); 
+                         " with no direction hints.\n", request);
                VG_(umsg)("   This could cause spurious value errors to appear.\n");
                VG_(umsg)("   See README_MISSING_SYSCALL_OR_IOCTL for "
                          "guidance on writing a proper wrapper.\n" );
@@ -3807,13 +4541,23 @@ Bool ML_(do_sigkill)(Int pid, Int tgid)
    if (tgid != -1 && tst->os_state.threadgroup != tgid)
       return False;		/* not the right thread group */
 
-   /* Check to see that the target isn't already exiting. */
-   if (!VG_(is_exiting)(tid)) {
+   /* Fatal SIGKILL sent to one of our threads.
+      "Handle" the signal ourselves, as trying to have tid
+      handling the signal causes termination problems (see #409367
+      and #409141).
+      Moreover, as a process cannot do anything when receiving SIGKILL,
+      it is not particularly crucial that "tid" does the work to
+      terminate the process.  */
+
       if (VG_(clo_trace_signals))
 	 VG_(message)(Vg_DebugMsg,
-                      "Thread %u being killed with SIGKILL\n", 
-                      tst->tid);
+                   "Thread %u %s being killed with SIGKILL, running tid: %u\n",
+                   tst->tid, VG_(name_of_ThreadStatus) (tst->status), VG_(running_tid));
       
+   if (!VG_(is_running_thread)(tid))
+      tst = VG_(get_ThreadState)(VG_(running_tid));
+   VG_(nuke_all_threads_except) (VG_(running_tid), VgSrc_FatalSig);
+   VG_(reap_threads)(VG_(running_tid));
       tst->exitreason = VgSrc_FatalSig;
       tst->os_state.fatalsig = VKI_SIGKILL;
       
@@ -3863,6 +4607,7 @@ PRE(sys_link)
    PRE_MEM_RASCIIZ( "link(newpath)", ARG2);
 }
 
+#if !defined(VGP_nanomips_linux) && !defined(VGO_freebsd)
 PRE(sys_newlstat)
 {
    PRINT("sys_newlstat ( %#" FMT_REGWORD "x(%s), %#" FMT_REGWORD "x )", ARG1,
@@ -3877,6 +4622,7 @@ POST(sys_newlstat)
    vg_assert(SUCCESS);
    POST_MEM_WRITE( ARG2, sizeof(struct vki_stat) );
 }
+#endif
 
 PRE(sys_mkdir)
 {
@@ -3894,12 +4640,32 @@ PRE(sys_mprotect)
    PRE_REG_READ3(long, "mprotect",
                  unsigned long, addr, vki_size_t, len, unsigned long, prot);
 
-   if (!ML_(valid_client_addr)(ARG1, ARG2, tid, "mprotect")) {
+   Addr addr = ARG1;
+   SizeT len = ARG2;
+   Int prot  = ARG3;
+
+   handle_sys_mprotect (tid, status, &addr, &len, &prot);
+
+   ARG1 = addr;
+   ARG2 = len;
+   ARG3 = prot;
+}
+/* This will be called from the generic mprotect, or the linux specific
+   pkey_mprotect. Pass pointers to ARG1, ARG2 and ARG3 as addr, len and prot,
+   they might be adjusted and have to assigned back to ARG1, ARG2 and ARG3.  */
+void handle_sys_mprotect(ThreadId tid, SyscallStatus* status,
+                         Addr *addr, SizeT *len, Int *prot)
+{
+   if (!ML_(valid_client_addr)(*addr, *len, tid, "mprotect")) {
+#if defined(VGO_freebsd)
+      SET_STATUS_Failure( VKI_EINVAL );
+#else
       SET_STATUS_Failure( VKI_ENOMEM );
+#endif
    } 
 #if defined(VKI_PROT_GROWSDOWN)
    else 
-   if (ARG3 & (VKI_PROT_GROWSDOWN|VKI_PROT_GROWSUP)) {
+   if (*prot & (VKI_PROT_GROWSDOWN|VKI_PROT_GROWSUP)) {
       /* Deal with mprotects on growable stack areas.
 
          The critical files to understand all this are mm/mprotect.c
@@ -3914,8 +4680,8 @@ PRE(sys_mprotect)
 
          The sanity check provided by the kernel is that the vma must
          have the VM_GROWSDOWN/VM_GROWSUP flag set as appropriate.  */
-      UInt grows = ARG3 & (VKI_PROT_GROWSDOWN|VKI_PROT_GROWSUP);
-      NSegment const *aseg = VG_(am_find_nsegment)(ARG1);
+      UInt grows = *prot & (VKI_PROT_GROWSDOWN|VKI_PROT_GROWSUP);
+      NSegment const *aseg = VG_(am_find_nsegment)(*addr);
       NSegment const *rseg;
 
       vg_assert(aseg);
@@ -3926,10 +4692,10 @@ PRE(sys_mprotect)
              && rseg->kind == SkResvn
              && rseg->smode == SmUpper
              && rseg->end+1 == aseg->start) {
-            Addr end = ARG1 + ARG2;
-            ARG1 = aseg->start;
-            ARG2 = end - aseg->start;
-            ARG3 &= ~VKI_PROT_GROWSDOWN;
+            Addr end = *addr + *len;
+            *addr = aseg->start;
+            *len = end - aseg->start;
+            *prot &= ~VKI_PROT_GROWSDOWN;
          } else {
             SET_STATUS_Failure( VKI_EINVAL );
          }
@@ -3939,8 +4705,8 @@ PRE(sys_mprotect)
              && rseg->kind == SkResvn
              && rseg->smode == SmLower
              && aseg->end+1 == rseg->start) {
-            ARG2 = aseg->end - ARG1 + 1;
-            ARG3 &= ~VKI_PROT_GROWSUP;
+            *len = aseg->end - *addr + 1;
+            *prot &= ~VKI_PROT_GROWSUP;
          } else {
             SET_STATUS_Failure( VKI_EINVAL );
          }
@@ -4054,8 +4820,55 @@ Bool ML_(handle_auxv_open)(SyscallStatus *status, const HChar *filename,
 }
 #endif // defined(VGO_linux) || defined(VGO_solaris)
 
+#if defined(VGO_linux)
+Bool ML_(handle_self_exe_open)(SyscallStatus *status, const HChar *filename,
+                               int flags)
+{
+   HChar  name[30];   // large enough for /proc/<int>/exe
+
+   if (!ML_(safe_to_deref)((const void *) filename, 1))
+      return False;
+
+   /* Opening /proc/<pid>/exe or /proc/self/exe? */
+   VG_(sprintf)(name, "/proc/%d/exe", VG_(getpid)());
+   if (!VG_STREQ(filename, name) && !VG_STREQ(filename, "/proc/self/exe"))
+      return False;
+
+   /* Allow to open the file only for reading. */
+   if (flags & (VKI_O_WRONLY | VKI_O_RDWR)) {
+      SET_STATUS_Failure(VKI_EACCES);
+      return True;
+   }
+
+   SysRes sres = VG_(dup)(VG_(cl_exec_fd));
+   SET_STATUS_from_SysRes(sres);
+   if (!sr_isError(sres)) {
+      OffT off = VG_(lseek)(sr_Res(sres), 0, VKI_SEEK_SET);
+      if (off < 0)
+         SET_STATUS_Failure(VKI_EMFILE);
+   }
+
+   return True;
+}
+#endif // defined(VGO_linux)
+
+// int open(const char *path, int flags, mode_t mode);
 PRE(sys_open)
 {
+#if defined(VGO_linux)
+   HChar  name[30];   // large enough
+   Bool   proc_self_exe = False;
+
+   /* Check for /proc/self/exe or /proc/<pid>/exe case
+    * first so that we can then use the later checks. */
+   VG_(sprintf)(name, "/proc/%d/exe", VG_(getpid)());
+   if (ML_(safe_to_deref)( (void*)(Addr)ARG1, 1 )
+       && (VG_(strcmp)((HChar *)(Addr)ARG1, name) == 0
+           || VG_(strcmp)((HChar *)(Addr)ARG1, "/proc/self/exe") == 0)) {
+      proc_self_exe = True;
+   }
+#endif
+
    if (ARG2 & VKI_O_CREAT) {
       // 3-arg version
       PRINT("sys_open ( %#" FMT_REGWORD "x(%s), %ld, %ld )",ARG1,
@@ -4071,13 +4884,39 @@ PRE(sys_open)
    }
    PRE_MEM_RASCIIZ( "open(filename)", ARG1 );
 
+   // check that we are not trying to open the client exe for writing
+   if ((ARG2 & VKI_O_WRONLY) ||
+       (ARG2 & VKI_O_RDWR)) {
+#if defined(VGO_linux)
+      if (proc_self_exe) {
+
+         SET_STATUS_Failure( VKI_ETXTBSY );
+         return;
+      } else {
+#endif
+      vg_assert(VG_(resolved_exename));
+      const HChar* path = (const HChar*)ARG1;
+      if (ML_(safe_to_deref)(path, 1)) {
+         // we need something like a "ML_(safe_to_deref_path)" that does a binary search for the addressable length, and maybe nul
+         HChar tmp[VKI_PATH_MAX];
+         if (VG_(realpath)(path, tmp)) {
+            if (!VG_(strcmp)(tmp, VG_(resolved_exename))) {
+               SET_STATUS_Failure( VKI_ETXTBSY );
+               return;
+            }
+         }
+      }
+#if defined(VGO_linux)
+      }
+#endif
+   }
+
 #if defined(VGO_linux)
    /* Handle the case where the open is of /proc/self/cmdline or
       /proc/<pid>/cmdline, and just give it a copy of the fd for the
       fake file we cooked up at startup (in m_main).  Also, seek the
       cloned fd back to the start. */
    {
-      HChar  name[30];   // large enough
       HChar* arg1s = (HChar*) (Addr)ARG1;
       SysRes sres;
 
@@ -4095,9 +4934,16 @@ PRE(sys_open)
       }
    }
 
-   /* Handle also the case of /proc/self/auxv or /proc/<pid>/auxv. */
-   if (ML_(handle_auxv_open)(status, (const HChar *)(Addr)ARG1, ARG2))
+   /* Handle also the case of /proc/self/auxv or /proc/<pid>/auxv
+      or /proc/self/exe or /proc/<pid>/exe. */
+   if (ML_(handle_auxv_open)(status, (const HChar *)(Addr)ARG1, ARG2)
+       || ML_(handle_self_exe_open)(status, (const HChar *)(Addr)ARG1, ARG2))
       return;
+
+   if (proc_self_exe) {
+      // do the syscall with VG_(resolved_exename)
+      ARG1 = (Word)VG_(resolved_exename);
+   }
 #endif // defined(VGO_linux)
 
    /* Otherwise handle normally */
@@ -4107,6 +4953,7 @@ PRE(sys_open)
 POST(sys_open)
 {
    vg_assert(SUCCESS);
+   POST_newFd_RES;
    if (!ML_(fd_allowed)(RES, "open", tid, True)) {
       VG_(close)(RES);
       SET_STATUS_Failure( VKI_EMFILE );
@@ -4122,7 +4969,7 @@ PRE(sys_read)
    PRINT("sys_read ( %" FMT_REGWORD "u, %#" FMT_REGWORD "x, %"
          FMT_REGWORD "u )", ARG1, ARG2, ARG3);
    PRE_REG_READ3(ssize_t, "read",
-                 unsigned int, fd, char *, buf, vki_size_t, count);
+                 int, fd, char *, buf, vki_size_t, count);
 
    if (!ML_(fd_allowed)(ARG1, "read", tid, False))
       SET_STATUS_Failure( VKI_EBADF );
@@ -4173,6 +5020,7 @@ PRE(sys_creat)
 POST(sys_creat)
 {
    vg_assert(SUCCESS);
+   POST_newFd_RES;
    if (!ML_(fd_allowed)(RES, "creat", tid, True)) {
       VG_(close)(RES);
       SET_STATUS_Failure( VKI_EMFILE );
@@ -4196,14 +5044,24 @@ PRE(sys_poll)
    *flags |= SfMayBlock;
    PRINT("sys_poll ( %#" FMT_REGWORD "x, %" FMT_REGWORD "u, %ld )\n",
          ARG1, ARG2, SARG3);
+#if defined(VGO_darwin)
+   PRE_REG_READ3(long, "poll",
+                 struct vki_pollfd *, ufds, unsigned int, nfds, int, timeout);
+#else
    PRE_REG_READ3(long, "poll",
                  struct vki_pollfd *, ufds, unsigned int, nfds, long, timeout);
+#endif
 
    for (i = 0; i < ARG2; i++) {
       PRE_MEM_READ( "poll(ufds.fd)",
                     (Addr)(&ufds[i].fd), sizeof(ufds[i].fd) );
+      if (ML_(safe_to_deref)(&ufds[i].fd, sizeof(ufds[i].fd)) && ufds[i].fd >= 0) {
+         if (!ML_(fd_allowed)(ufds[i].fd, "poll(ufds.fd)", tid, False)) {
+            /* do nothing? Just let fd_allowed produce a warning? */
+         }
       PRE_MEM_READ( "poll(ufds.events)",
                     (Addr)(&ufds[i].events), sizeof(ufds[i].events) );
+      }
       PRE_MEM_WRITE( "poll(ufds.revents)",
                      (Addr)(&ufds[i].revents), sizeof(ufds[i].revents) );
    }
@@ -4211,7 +5069,7 @@ PRE(sys_poll)
 
 POST(sys_poll)
 {
-   if (RES >= 0) {
+   if (SUCCESS) {
       UInt i;
       struct vki_pollfd* ufds = (struct vki_pollfd *)(Addr)ARG1;
       for (i = 0; i < ARG2; i++)
@@ -4221,9 +5079,6 @@ POST(sys_poll)
 
 PRE(sys_readlink)
 {
-   FUSE_COMPATIBLE_MAY_BLOCK();
-   Word saved = SYSNO;
-
    PRINT("sys_readlink ( %#" FMT_REGWORD "x(%s), %#" FMT_REGWORD "x, %llu )",
          ARG1, (char*)(Addr)ARG1, ARG2, (ULong)ARG3);
    PRE_REG_READ3(long, "readlink",
@@ -4231,9 +5086,9 @@ PRE(sys_readlink)
    PRE_MEM_RASCIIZ( "readlink(path)", ARG1 );
    PRE_MEM_WRITE( "readlink(buf)", ARG2,ARG3 );
 
-
-   {
+   Bool fuse_may_block = True;
 #if defined(VGO_linux) || defined(VGO_solaris)
+   {
 #if defined(VGO_linux)
 #define PID_EXEPATH  "/proc/%d/exe"
 #define SELF_EXEPATH "/proc/self/exe"
@@ -4252,18 +5107,26 @@ PRE(sys_readlink)
       VG_(sprintf)(name, PID_EXEPATH, VG_(getpid)());
       if (ML_(safe_to_deref)(arg1s, 1)
           && (VG_STREQ(arg1s, name) || VG_STREQ(arg1s, SELF_EXEPATH))) {
-         VG_(sprintf)(name, SELF_EXEFD, VG_(cl_exec_fd));
-         SET_STATUS_from_SysRes( VG_(do_syscall3)(saved, (UWord)name, 
-                                                         ARG2, ARG3));
-      } else
-#endif
-      {
-         /* Normal case */
-         SET_STATUS_from_SysRes( VG_(do_syscall3)(saved, ARG1, ARG2, ARG3));
+         HChar* out_name = (HChar*)ARG2;
+         SizeT res = VG_(strlen)(VG_(resolved_exename));
+         res = VG_MIN(res, ARG3);
+         if (ML_(safe_to_deref)(out_name, res)) {
+            VG_(strncpy)(out_name, VG_(resolved_exename), res);
+            SET_STATUS_Success(res);
+         } else {
+            SET_STATUS_Failure(VKI_EFAULT);
       }
+         fuse_may_block = False;
    }
+   }
+#endif
 
-   if (SUCCESS && RES > 0)
+   if (fuse_may_block)
+       FUSE_COMPATIBLE_MAY_BLOCK();
+}
+
+POST(sys_readlink)
+{
       POST_MEM_WRITE( ARG2, RES );
 }
 
@@ -4271,6 +5134,7 @@ PRE(sys_readv)
 {
    Int i;
    struct vki_iovec * vec;
+   char buf[sizeof("readv(vector[])") + 11];
    *flags |= SfMayBlock;
    PRINT("sys_readv ( %" FMT_REGWORD "u, %#" FMT_REGWORD "x, %"
          FMT_REGWORD "u )", ARG1, ARG2, ARG3);
@@ -4283,12 +5147,12 @@ PRE(sys_readv)
       if ((Int)ARG3 >= 0)
          PRE_MEM_READ( "readv(vector)", ARG2, ARG3 * sizeof(struct vki_iovec) );
 
-      if (ARG2 != 0) {
-         /* ToDo: don't do any of the following if the vector is invalid */
+      if (ML_(safe_to_deref)((const void*)ARG2, ARG3*sizeof(struct vki_iovec *))) {
          vec = (struct vki_iovec *)(Addr)ARG2;
-         for (i = 0; i < (Int)ARG3; i++)
-            PRE_MEM_WRITE( "readv(vector[...])",
-                           (Addr)vec[i].iov_base, vec[i].iov_len );
+         for (i = 0; i < (Int)ARG3; i++) {
+            VG_(sprintf)(buf, "readv(vector[%d])", i);
+            PRE_MEM_WRITE(buf, (Addr)vec[i].iov_base, vec[i].iov_len );
+         }
       }
    }
 }
@@ -4411,7 +5275,11 @@ PRE(sys_setrlimit)
    }
    else if (((struct vki_rlimit *)(Addr)ARG2)->rlim_cur
             > ((struct vki_rlimit *)(Addr)ARG2)->rlim_max) {
+#if defined(VGO_freebsd)|| defined(VGO_dragonfly)
+      SET_STATUS_Failure( VKI_EPERM );
+#else
       SET_STATUS_Failure( VKI_EINVAL );
+#endif
    }
    else if (arg1 == VKI_RLIMIT_NOFILE) {
       if (((struct vki_rlimit *)(Addr)ARG2)->rlim_cur > VG_(fd_hard_limit) ||
@@ -4464,6 +5332,7 @@ PRE(sys_setuid)
    PRE_REG_READ1(long, "setuid", vki_uid_t, uid);
 }
 
+#if !defined(VGP_nanomips_linux) && !defined(VGO_freebsd)
 PRE(sys_newstat)
 {
    FUSE_COMPATIBLE_MAY_BLOCK();
@@ -4478,7 +5347,9 @@ POST(sys_newstat)
 {
    POST_MEM_WRITE( ARG2, sizeof(struct vki_stat) );
 }
+#endif
 
+#if !defined(VGP_nanomips_linux)
 PRE(sys_statfs)
 {
    FUSE_COMPATIBLE_MAY_BLOCK();
@@ -4495,6 +5366,7 @@ POST(sys_statfs)
 
 PRE(sys_statfs64)
 {
+   FUSE_COMPATIBLE_MAY_BLOCK();
    PRINT("sys_statfs64 ( %#" FMT_REGWORD "x(%s), %llu, %#" FMT_REGWORD "x )",
          ARG1, (char*)(Addr)ARG1, (ULong)ARG2, ARG3);
    PRE_REG_READ3(long, "statfs64",
@@ -4506,6 +5378,7 @@ POST(sys_statfs64)
 {
    POST_MEM_WRITE( ARG3, ARG2 );
 }
+#endif
 
 PRE(sys_symlink)
 {
@@ -4564,7 +5437,7 @@ PRE(sys_unlink)
    PRE_MEM_RASCIIZ( "unlink(pathname)", ARG1 );
 }
 
-#if !defined(VGO_dragonfly)
+#if !defined(VGO_freebsd) && !defined(VGO_dragonfly)
 PRE(sys_newuname)
 {
    PRINT("sys_newuname ( %#" FMT_REGWORD "x )", ARG1);
@@ -4624,6 +5497,7 @@ PRE(sys_writev)
 {
    Int i;
    struct vki_iovec * vec;
+   char buf[sizeof("writev(vector[])") + 11];
    *flags |= SfMayBlock;
    PRINT("sys_writev ( %" FMT_REGWORD "u, %#" FMT_REGWORD "x, %"
          FMT_REGWORD "u )", ARG1, ARG2, ARG3);
@@ -4636,12 +5510,13 @@ PRE(sys_writev)
       if ((Int)ARG3 >= 0)
          PRE_MEM_READ( "writev(vector)", 
                        ARG2, ARG3 * sizeof(struct vki_iovec) );
-      if (ARG2 != 0) {
-         /* ToDo: don't do any of the following if the vector is invalid */
+
+      if (ML_(safe_to_deref)((const void*)ARG2, ARG3*sizeof(struct vki_iovec *))) {
          vec = (struct vki_iovec *)(Addr)ARG2;
-         for (i = 0; i < (Int)ARG3; i++)
-            PRE_MEM_READ( "writev(vector[...])",
-                           (Addr)vec[i].iov_base, vec[i].iov_len );
+         for (i = 0; i < (Int)ARG3; i++) {
+            VG_(sprintf)(buf, "writev(vector[%d])", i);
+            PRE_MEM_READ( buf, (Addr)vec[i].iov_base, vec[i].iov_len );
+         }
       }
    }
 }
@@ -4681,9 +5556,9 @@ PRE(sys_sigaltstack)
                  const vki_stack_t *, ss, vki_stack_t *, oss);
    if (ARG1 != 0) {
       const vki_stack_t *ss = (vki_stack_t *)(Addr)ARG1;
-      PRE_MEM_READ( "sigaltstack(ss)", (Addr)&ss->ss_sp, sizeof(ss->ss_sp) );
-      PRE_MEM_READ( "sigaltstack(ss)", (Addr)&ss->ss_flags, sizeof(ss->ss_flags) );
-      PRE_MEM_READ( "sigaltstack(ss)", (Addr)&ss->ss_size, sizeof(ss->ss_size) );
+      PRE_MEM_READ( "sigaltstack(ss->ss_sp)", (Addr)&ss->ss_sp, sizeof(ss->ss_sp) );
+      PRE_MEM_READ( "sigaltstack(ss->ss_size)", (Addr)&ss->ss_size, sizeof(ss->ss_size) );
+      PRE_MEM_READ( "sigaltstack(ss->ss_flags)", (Addr)&ss->ss_flags, sizeof(ss->ss_flags) );
    }
    if (ARG2 != 0) {
       PRE_MEM_WRITE( "sigaltstack(oss)", ARG2, sizeof(vki_stack_t) );
@@ -4721,7 +5596,7 @@ PRE(sys_sethostname)
 #undef PRE
 #undef POST
 
-#endif // defined(VGO_linux) || defined(VGO_darwin) || defined(VGO_solaris) || defined(VGO_dragonfly)
+#endif // defined(VGO_linux) || defined(VGO_darwin) || defined(VGO_solaris) || defined(VGO_freebsd)|| defined(VGO_dragonfly)
 
 /*--------------------------------------------------------------------*/
 /*--- end                                                          ---*/

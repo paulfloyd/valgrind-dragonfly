@@ -16,8 +16,7 @@
  *   GNU General Public License for more details.
  *
  *   You should have received a copy of the GNU General Public License
- *   along with this program; if not, write to the Free Software
- *   Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+ *   along with this program; if not, see <http://www.gnu.org/licenses/>.
  */
 
 #include "tests/malloc.h"       // memalign32
@@ -405,12 +404,28 @@ static void dissect_xer_raw(unsigned long local_xer) {
          printf(" %s", xer_strings[i]);
    }
 }
+/* Display only the XER contents that are relevant for our tests.
+ * this is currently the OV and OV32 bits.  */
+static void dissect_xer_valgrind(unsigned long local_xer) {
+   int i;
+   long mybit;
+      i = 33;  // OV
+      mybit = 1ULL << (63 - i);
+      if (mybit & local_xer) printf(" %s", xer_strings[i]);
+      i = 44;  // OV32
+      mybit = 1ULL << (63 - i);
+      if (mybit & local_xer) printf(" %s", xer_strings[i]);
+}
+
 
 /* */
 static void dissect_xer(unsigned long local_xer) {
    if (verbose > 1)
       printf(" [[ xer:%lx ]]", local_xer);
-   dissect_xer_raw(local_xer);
+   if (verbose > 2 )
+      dissect_xer_raw(local_xer);
+   else
+      dissect_xer_valgrind(local_xer);
 }
 
 

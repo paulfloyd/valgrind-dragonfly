@@ -13,7 +13,7 @@
 
    This program is free software; you can redistribute it and/or
    modify it under the terms of the GNU General Public License as
-   published by the Free Software Foundation; either version 2 of the
+   published by the Free Software Foundation; either version 3 of the
    License, or (at your option) any later version.
 
    This program is distributed in the hope that it will be useful, but
@@ -22,9 +22,7 @@
    General Public License for more details.
 
    You should have received a copy of the GNU General Public License
-   along with this program; if not, write to the Free Software
-   Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
-   02111-1307, USA.
+   along with this program; if not, see <http://www.gnu.org/licenses/>.
 
    The GNU General Public License is contained in the file COPYING.
 */
@@ -302,7 +300,7 @@ static UInt local_sys_write_stderr ( const HChar* buf, Int n )
 
 static UInt local_sys_getpid ( void )
 {
-   UInt __res;
+   ULong __res;
    __asm__ volatile (
       "mov  x8, #"VG_STRINGIFY(__NR_getpid)"\n"
       "svc  0x0\n"      /* getpid() */
@@ -406,7 +404,7 @@ static UInt local_sys_write_stderr ( const HChar* buf, Int n )
    ULong __res;
 
    __asm__ __volatile__ (
-      "svc %b1\n"
+      "svc %c1\n"
       : "=d" (r2_res)
       : "i" (__NR_write),
         "0" (r2),
@@ -426,7 +424,7 @@ static UInt local_sys_getpid ( void )
    ULong __res;
 
    __asm__ __volatile__ (
-      "svc %b1\n"
+      "svc %c1\n"
       : "=d" (r2)
       : "i" (__NR_getpid)
       : "cc", "memory");
@@ -435,6 +433,125 @@ static UInt local_sys_getpid ( void )
    if (__res >= (ULong)(-125))
       __res = -1;
    return (UInt)(__res);
+}
+
+#elif defined(VGP_x86_freebsd)
+static UInt local_sys_write_stderr (const HChar* buf, Int n )
+{
+   Int result;
+
+   __asm__ volatile (
+      "movl  %2, %%eax\n"    /* push n */
+      "movl  %1, %%edx\n"    /* push buf */
+      "pushl %%eax\n"
+      "pushl %%edx\n"
+      "movl  $2, %%eax\n"    /* push stderr */
+      "pushl %%eax\n"
+      "movl  $"VG_STRINGIFY(__NR_write)", %%eax\n"
+      "pushl %%eax\n"        /* push write syscall id */
+      "int   $0x80\n"        /* write(stderr, buf, n) */
+      "jnc   1f\n"           /* jump if no error */
+      "movl  $-1, %%eax\n"   /* return -1 if error */
+      "1: "
+      "movl  %%eax, %0\n"    /* __res = eax */
+      "addl  $16, %%esp\n"   /* pop x4 */
+      : /*wr*/    "=mr" (result)
+      : /*rd*/    "g" (buf), "g" (n)
+      : /*trash*/ "eax", "edx", "cc"
+   );
+   return result >= 0 ? result : -1;
+}
+
+static UInt local_sys_getpid ( void )
+{
+   UInt __res;
+   __asm__ volatile (
+      "movl $20, %%eax\n"  /* set %eax = __NR_getpid */
+      "int  $0x80\n"       /* getpid() */
+      "movl %%eax, %0\n"   /* set __res = eax */
+      : "=mr" (__res)
+      :
+      : "eax" );
+   return __res;
+}
+
+#elif defined(VGP_amd64_freebsd)
+__attribute__((noinline))
+static UInt local_sys_write_stderr (const HChar* buf, Int n )
+{
+   volatile Long block[2];
+   block[0] = (Long)buf;
+   block[1] = n;
+   __asm__ volatile (
+      "subq  $256, %%rsp\n"     /* don't trash the stack redzone */
+      "pushq %%r15\n"           /* r15 is callee-save */
+      "movq  %0, %%r15\n"       /* r15 = &block */
+      "pushq %%r15\n"           /* save &block */
+      "movq  $"VG_STRINGIFY(__NR_write)", %%rax\n" /* rax = __NR_write */
+      "movq  $2, %%rdi\n"       /* rdi = stderr */
+      "movq  0(%%r15), %%rsi\n" /* rsi = buf */
+      "movq  8(%%r15), %%rdx\n" /* rdx = n */
+      "syscall\n"               /* write(stderr, buf, n) */
+      "popq  %%r15\n"           /* reestablish &block */
+      "movq  %%rax, 0(%%r15)\n" /* block[0] = result */
+      "popq  %%r15\n"           /* restore r15 */
+      "addq  $256, %%rsp\n"     /* restore stack ptr */
+      : /*wr*/
+      : /*rd*/    "r" (block)
+      : /*trash*/ "rax", "rdi", "rsi", "rdx", "memory", "cc", "rcx", "r8", "r9", "r11"
+   );
+   if (block[0] < 0)
+      block[0] = -1;
+   return (UInt)block[0];
+}
+
+static UInt local_sys_getpid ( void )
+{
+   UInt __res;
+   __asm__ volatile (
+      "movq $20, %%rax\n"  /* set %rax = __NR_getpid */
+      "syscall\n"          /* getpid() */
+      "movl %%eax, %0\n"   /* set __res = %eax */
+      : "=mr" (__res)
+      :
+      : "rax", "rcx");//, "r11" );
+   return __res;
+}
+
+#elif defined(VGP_arm64_freebsd)
+
+static UInt local_sys_write_stderr ( const HChar* buf, SizeT n )
+{
+   volatile ULong block[2];
+   block[0] = (ULong)buf;
+   block[1] = (ULong)n;
+   __asm__ volatile (
+      "mov  x0, #2\n"          /* stderr */
+      "ldr  x1, [%0]\n"        /* buf */
+      "ldr  x2, [%0, #8]\n"    /* n */
+      "mov  x8, #"VG_STRINGIFY(__NR_write)"\n"
+      "svc  0x0\n"             /* write() */
+      "str  x0, [%0]\n"
+      :
+      : "r" (block)
+      : "x0","x1","x2","x8","cc","memory"
+      );
+   if (block[0] < 0)
+      block[0] = -1;
+   return (UInt)block[0];
+}
+
+static UInt local_sys_getpid ( void )
+{
+   ULong res;
+   __asm__ volatile (
+      "mov x8, #"VG_STRINGIFY(__NR_getpid)"\n"
+      "svc 0x0\n"             /* getpid() */
+      "mov %0, x0\n"          /* set res = x0 */
+      : "=r" (res)
+      :
+      : "x8", "x0", "x1", "cc" );
+   return (UInt)res;
 }
 
 #elif defined(VGP_x86_dragonfly)
@@ -527,7 +644,13 @@ static UInt local_sys_write_stderr ( const HChar* buf, Int n )
    __asm__ volatile (
       "syscall            \n\t"
       "addiu   $4, $0, -1 \n\t"
+      #if ((defined(__mips_isa_rev) && __mips_isa_rev >= 6))
+      "selnez  $4, $4, $7 \n\t"
+      "seleqz  $2, $2, $7 \n\t"
+      "or      $2, $2, $4 \n\t"
+      #else
       "movn    $2, $4, $7 \n\t"
+      #endif
      : "+d" (v0), "+d" (a0), "+d" (a1), "+d" (a2)
      :
      : "$1", "$3", "$7", "$8", "$9", "$10", "$11", "$12", "$13", "$14", "$15",
@@ -548,6 +671,73 @@ static UInt local_sys_getpid ( void )
        "$13", "$14", "$15", "$24", "$25", "$31"
    );
    return v0;
+}
+
+#elif defined(VGP_nanomips_linux)
+
+__attribute__((noinline))
+static UInt local_sys_write_stderr ( const HChar* buf, Int n )
+{
+   register RegWord t4 asm("2");
+   register RegWord a0 asm("4");
+   register RegWord a1 asm("5");
+   register RegWord a2 asm("6");
+   t4 = __NR_write;
+   a2 = n;
+   a1 = (RegWord)(Addr)buf;
+   a0 = 2; // stderr
+   __asm__ volatile (
+      "syscall[32] \n\t"
+     : "+d" (t4), "+d" (a0), "+d" (a1), "+d" (a2)
+     :
+     : "$at", "$t5", "$a3", "$a4", "$a5", "$a6", "$a7", "$t0", "$t1", "$t2",
+       "$t3", "$t8", "$t9"
+   );
+   return a0;
+}
+
+__attribute__((noinline))
+static UInt local_sys_getpid ( void )
+{
+   register RegWord t4 asm("2");
+   register RegWord a0 asm("4");
+   t4 = __NR_getpid;
+   __asm__ volatile (
+      "syscall[32] \n\t"
+     : "+d" (t4), "=d" (a0)
+     :
+     : "$at", "$t5", "$a1", "$a2", "$a3", "$a4", "$a5", "$a6", "$a7", "$t0",
+       "$t1", "$t2", "$t3", "$t8", "$t9"
+   );
+   return a0;
+}
+
+#elif defined(VGP_riscv64_linux)
+
+static UInt local_sys_write_stderr ( const HChar* buf, Int n )
+{
+   register RegWord a0 asm("a0") = 2; /* stderr */
+   register RegWord a1 asm("a1") = (RegWord)buf;
+   register RegWord a2 asm("a2") = n;
+   register RegWord a7 asm("a7") = __NR_write;
+   __asm__ volatile (
+      "ecall\n"
+      : "+r" (a0)
+      : "r" (a1), "r" (a2), "r" (a7)
+   );
+   return a0 >= 0 ? (UInt)a0 : -1;
+}
+
+static UInt local_sys_getpid ( void )
+{
+   register RegWord a0 asm("a0");
+   register RegWord a7 asm("a7") = __NR_getpid;
+   __asm__ volatile (
+      "ecall\n"
+      : "=r" (a0)
+      : "r" (a7)
+   );
+   return (UInt)a0;
 }
 
 #elif defined(VGP_x86_solaris)

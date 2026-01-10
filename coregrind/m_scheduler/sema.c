@@ -12,7 +12,7 @@
 
    This program is free software; you can redistribute it and/or
    modify it under the terms of the GNU General Public License as
-   published by the Free Software Foundation; either version 2 of the
+   published by the Free Software Foundation; either version 3 of the
    License, or (at your option) any later version.
 
    This program is distributed in the hope that it will be useful, but
@@ -21,9 +21,7 @@
    General Public License for more details.
 
    You should have received a copy of the GNU General Public License
-   along with this program; if not, write to the Free Software
-   Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
-   02111-1307, USA.
+   along with this program; if not, see <http://www.gnu.org/licenses/>.
 
    The GNU General Public License is contained in the file COPYING.
 */
@@ -110,8 +108,8 @@ void ML_(sema_down)( vg_sema_t *sema, Bool as_LL )
    INNER_REQUEST(ANNOTATE_RWLOCK_ACQUIRED(sema, /*is_w*/1));
 
    if (ret != 1) 
-      VG_(debugLog)(0, "scheduler", 
-                       "VG_(sema_down): read returned %d\n", ret);
+      VG_(debugLog)(1, "scheduler",
+                       "ML_(sema_down): read returned %d\n", ret);
 
    if (ret == -VKI_EINTR)
       goto again;

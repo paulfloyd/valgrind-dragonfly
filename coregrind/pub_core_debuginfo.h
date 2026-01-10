@@ -12,7 +12,7 @@
 
    This program is free software; you can redistribute it and/or
    modify it under the terms of the GNU General Public License as
-   published by the Free Software Foundation; either version 2 of the
+   published by the Free Software Foundation; either version 3 of the
    License, or (at your option) any later version.
 
    This program is distributed in the hope that it will be useful, but
@@ -21,9 +21,7 @@
    General Public License for more details.
 
    You should have received a copy of the GNU General Public License
-   along with this program; if not, write to the Free Software
-   Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
-   02111-1307, USA.
+   along with this program; if not, see <http://www.gnu.org/licenses/>.
 
    The GNU General Public License is contained in the file COPYING.
 */
@@ -62,7 +60,7 @@ extern void VG_(di_initialise) ( void );
    released by simply re-opening and closing the same file (even via
    different fd!).
 */
-#if defined(VGO_linux) || defined(VGO_darwin) || defined(VGO_solaris) || defined(VGO_dragonfly)
+#if defined(VGO_linux) || defined(VGO_darwin) || defined(VGO_solaris) || defined(VGO_freebsd) || defined(VGO_dragonfly)
 extern ULong VG_(di_notify_mmap)( Addr a, Bool allow_SkFileV, Int use_fd );
 
 extern void VG_(di_notify_munmap)( Addr a, SizeT len );
@@ -77,6 +75,16 @@ extern void VG_(di_notify_pdb_debuginfo)( Int fd, Addr avma,
 /* this should also really return ULong */
 extern void VG_(di_notify_vm_protect)( Addr a, SizeT len, UInt prot );
 #endif
+
+#if defined(VGO_darwin) && DARWIN_VERS >= DARWIN_11_00
+extern ULong VG_(di_notify_dsc)( const HChar* path, Addr header, SizeT len );
+#endif
+
+extern void VG_(addr_load_di)( Addr a );
+
+extern void VG_(di_load_di)( DebugInfo *di );
+
+extern void VG_(load_di)( DebugInfo *di, Addr a );
 
 extern void VG_(di_discard_ALL_debuginfo)( void );
 
@@ -125,9 +133,15 @@ typedef
    D3UnwindRegs;
 #elif defined(VGA_s390x)
 typedef
-   struct { Addr ia; Addr sp; Addr fp; Addr lr;}
+   struct { Addr ia; Addr sp; Addr fp; Addr lr;
+            Addr f0; Addr f1; Addr f2; Addr f3;
+            Addr f4; Addr f5; Addr f6; Addr f7; }
    D3UnwindRegs;
-#elif defined(VGA_mips32) || defined(VGA_mips64)
+#elif defined(VGA_mips32) || defined(VGA_mips64) || defined(VGA_nanomips)
+typedef
+   struct { Addr pc; Addr sp; Addr fp; Addr ra; }
+   D3UnwindRegs;
+#elif defined(VGA_riscv64)
 typedef
    struct { Addr pc; Addr sp; Addr fp; Addr ra; }
    D3UnwindRegs;
@@ -146,6 +160,15 @@ extern Bool VG_(use_CF_info) ( /*MOD*/D3UnwindRegs* uregs,
    info (e.g. CFI info or FPO info or ...). */
 extern UInt VG_(debuginfo_generation) (void);
 
+#if defined(VGO_freebsd)
+/* Force completion of loading all debuginfo.
+    Needed on FreeBSD when entering capability mode since
+    we can't open executable files to get the debuginfo after
+    entering capability mode. */
+extern void VG_(load_all_debuginfo) (void);
+/* Get the size of .data for the client exe */
+extern SizeT VG_(data_size)(void);
+#endif
 
 
 /* True if some FPO information is loaded.

@@ -1,19 +1,21 @@
 
 /*--------------------------------------------------------------------*/
 /*--- The core dispatch loop, for jumping to a code address.       ---*/
-/*---                                         dispatch-x86-linux.S ---*/
+/*---                                       dispatch-x86-freebsd.S ---*/
 /*--------------------------------------------------------------------*/
 
 /*
   This file is part of Valgrind, a dynamic binary instrumentation
   framework.
 
-  Copyright (C) 2000-2012 Julian Seward 
+  Copyright (C) 2000-2012 Julian Seward
      jseward@acm.org
+   Copyright (C) 2018-2021 Paul Floyd
+      pjfloyd@wanadoo.fr
 
   This program is free software; you can redistribute it and/or
   modify it under the terms of the GNU General Public License as
-  published by the Free Software Foundation; either version 2 of the
+  published by the Free Software Foundation; either version 3 of the
   License, or (at your option) any later version.
 
   This program is distributed in the hope that it will be useful, but
@@ -22,16 +24,15 @@
   General Public License for more details.
 
   You should have received a copy of the GNU General Public License
-  along with this program; if not, write to the Free Software
-  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
-  02111-1307, USA.
+  along with this program; if not, see <http://www.gnu.org/licenses/>.
 
   The GNU General Public License is contained in the file COPYING.
 */
 
+#include "pub_core_basics_asm.h"
+
 #if defined(VGP_x86_freebsd)
 
-#include "pub_core_basics_asm.h"
 #include "pub_core_dispatch_asm.h"
 #include "pub_core_transtab_asm.h"
 #include "libvex_guest_offsets.h"	/* for OFFSET_x86_EIP */
@@ -51,7 +52,7 @@
 
 /* signature:
 void VG_(disp_run_translations)( UWord* two_words,
-                                 void*  guest_state, 
+                                 void*  guest_state,
                                  Addr   host_addr );
 */
 .text
@@ -73,22 +74,22 @@ VG_(disp_run_translations):
 	pushl	%esi
 	pushl	%edi
 	pushl	%ebp
-	
+
 	/* 28+4(%esp) holds two_words */
 	/* 28+8(%esp) holds guest_state */
 	/* 28+12(%esp) holds host_addr */
 
         /* Get the host CPU in the state expected by generated code. */
 
-	/* set host FPU control word to the default mode expected 
+	/* set host FPU control word to the default mode expected
            by VEX-generated code.  See comments in libvex.h for
            more info. */
 	finit
 	pushl	$0x027F
 	fldcw	(%esp)
 	addl	$4, %esp
-	
-	/* set host SSE control word to the default mode expected 
+
+	/* set host SSE control word to the default mode expected
 	   by VEX-generated code. */
 	cmpl	$0, VG_(machine_x86_have_mxcsr)
 	jz	L1
@@ -159,8 +160,8 @@ remove_frame:
 	popl	%ecx
 	popl	%ebx
 	popl	%eax
-	ret	
-        
+	ret
+ 
 /*----------------------------------------------------*/
 /*--- Continuation points                          ---*/
 /*----------------------------------------------------*/
@@ -200,8 +201,8 @@ VG_(disp_cp_xindir):
 	movl	OFFSET_x86_EIP(%ebp), %eax
 
         /* stats only */
-        addl    $1, VG_(stats__n_xindirs_32)
-        
+        addl    $1, VG_(stats__n_xIndirs_32)
+
         /* try a fast lookup in the translation cache */
         movl    %eax, %ebx                      /* next guest addr */
         andl    $VG_TT_FAST_MASK, %ebx          /* entry# */
@@ -216,7 +217,7 @@ VG_(disp_cp_xindir):
 
 fast_lookup_failed:
         /* stats only */
-        addl    $1, VG_(stats__n_xindir_misses_32)
+        addl    $1, VG_(stats__n_xIndir_misses_32)
 
 	movl	$VG_TRC_INNER_FASTMISS, %eax
         movl    $0, %edx
@@ -233,18 +234,16 @@ VG_(disp_cp_xassisted):
 /* ------ Event check failed ------ */
 .global VG_(disp_cp_evcheck_fail)
 VG_(disp_cp_evcheck_fail):
-       	movl	$VG_TRC_INNER_COUNTERZERO, %eax
+        movl	$VG_TRC_INNER_COUNTERZERO, %eax
         movl    $0, %edx
-	jmp	postamble
+        jmp	postamble
 
 
 .size VG_(disp_run_translations), .-VG_(disp_run_translations)
 
+#endif // defined(VGP_x86_freebsd)
+
 /* Let the linker know we don't need an executable stack */
-.section .note.GNU-stack,"",@progbits
-
-#endif // defined(VGP_x86_linux)
-
 MARK_STACK_NO_EXEC
 
 /*--------------------------------------------------------------------*/

@@ -4,7 +4,7 @@
 #include <pthread.h>
 #include <semaphore.h>
 #include <unistd.h>
-#if defined(VGO_dragonfly)
+#if defined(VGO_freebsd) || defined(VGO_dragonfly)
 # include <sys/fcntl.h>
 #endif
 /* This is really a test of semaphore handling
@@ -42,7 +42,7 @@ typedef struct
   sem_t* xxx;
 } gomp_barrier_t;
 
-typedef long bool;
+
 
 void
 gomp_barrier_init (gomp_barrier_t *bar, unsigned count)
@@ -225,7 +225,7 @@ static sem_t* my_sem_init (char* identity, int pshared, unsigned count)
 {
    sem_t* s;
 
-#if defined(VGO_linux) || defined(VGO_solaris)
+#if defined(VGO_linux) || defined(VGO_solaris) || defined(VGO_freebsd)
    s = malloc(sizeof(*s));
    if (s) {
       if (sem_init(s, pshared, count) < 0) {
@@ -253,7 +253,11 @@ static sem_t* my_sem_init (char* identity, int pshared, unsigned count)
 
 static int my_sem_destroy ( sem_t* s )
 {
+#if defined(VGO_darwin)
+return 0;
+#else
    return sem_destroy(s);
+#endif
 }
 
 static int my_sem_wait(sem_t* s)

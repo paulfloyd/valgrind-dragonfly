@@ -12,7 +12,7 @@
 
    This program is free software; you can redistribute it and/or
    modify it under the terms of the GNU General Public License as
-   published by the Free Software Foundation; either version 2 of the
+   published by the Free Software Foundation; either version 3 of the
    License, or (at your option) any later version.
 
    This program is distributed in the hope that it will be useful, but
@@ -21,9 +21,7 @@
    General Public License for more details.
 
    You should have received a copy of the GNU General Public License
-   along with this program; if not, write to the Free Software
-   Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
-   02111-1307, USA.
+   along with this program; if not, see <http://www.gnu.org/licenses/>.
 
    The GNU General Public License is contained in the file COPYING.
 */
@@ -97,6 +95,10 @@
 #  include "vki-posixtypes-mips32-linux.h"
 #elif defined(VGA_mips64)
 #  include "vki-posixtypes-mips64-linux.h"
+#elif defined(VGA_nanomips)
+#  include "vki-posixtypes-nanomips-linux.h"
+#elif defined(VGA_riscv64)
+#  include "vki-posixtypes-riscv64-linux.h"
 #else
 #  error Unknown platform
 #endif
@@ -170,6 +172,25 @@ typedef int __vki_kernel_key_t;
 typedef int __vki_kernel_mqd_t;
 
 //----------------------------------------------------------------------
+// From pre-git history /include/linux/types.h
+//----------------------------------------------------------------------
+
+struct vki_ustat {
+#if defined(VGA_mips32) || defined(VGA_mips64) || defined(VGA_nanomips)
+	long			f_tfree;
+#else
+	int			f_tfree;
+#endif
+#if defined(VGA_s390x)
+	unsigned int		f_tinode;
+#else
+	unsigned long		f_tinode;
+#endif
+	char			f_fname[6];
+	char			f_fpack[6];
+};
+
+//----------------------------------------------------------------------
 // From linux-2.6.8.1/include/linux/types.h
 //----------------------------------------------------------------------
 
@@ -223,6 +244,10 @@ typedef unsigned int	        vki_uint;
 #  include "vki-mips32-linux.h"
 #elif defined(VGA_mips64)
 #  include "vki-mips64-linux.h"
+#elif defined(VGA_nanomips)
+#  include "vki-nanomips-linux.h"
+#elif defined(VGA_riscv64)
+#  include "vki-riscv64-linux.h"
 #else
 #  error Unknown platform
 #endif
@@ -378,23 +403,51 @@ struct vki_utimbuf {
 // From linux-2.6.8.1/include/linux/sched.h
 //----------------------------------------------------------------------
 
-#define VKI_CSIGNAL		0x000000ff	/* signal mask to be sent at exit */
-#define VKI_CLONE_VM		0x00000100	/* set if VM shared between processes */
-#define VKI_CLONE_FS		0x00000200	/* set if fs info shared between processes */
-#define VKI_CLONE_FILES		0x00000400	/* set if open files shared between processes */
-#define VKI_CLONE_SIGHAND	0x00000800	/* set if signal handlers and blocked signals shared */
-#define VKI_CLONE_VFORK		0x00004000	/* set if the parent wants the child to wake it up on mm_release */
-#define VKI_CLONE_PARENT	0x00008000	/* set if we want to have the same parent as the cloner */
-#define VKI_CLONE_THREAD	0x00010000	/* Same thread group? */
-#define VKI_CLONE_SYSVSEM	0x00040000	/* share system V SEM_UNDO semantics */
-#define VKI_CLONE_SETTLS	0x00080000	/* create a new TLS for the child */
-#define VKI_CLONE_PARENT_SETTID	0x00100000	/* set the TID in the parent */
+#define VKI_CSIGNAL			0x000000ff	/* signal mask to be sent at exit */
+#define VKI_CLONE_VM			0x00000100	/* set if VM shared between processes */
+#define VKI_CLONE_FS			0x00000200	/* set if fs info shared between processes */
+#define VKI_CLONE_FILES			0x00000400	/* set if open files shared between processes */
+#define VKI_CLONE_SIGHAND		0x00000800	/* set if signal handlers and blocked signals shared */
+#define VKI_CLONE_PIDFD			0x00001000	/* set if a pidfd should be placed in parent */
+#define VKI_CLONE_PTRACE		0x00002000	/* set if we want to let tracing continue on the child too */
+#define VKI_CLONE_VFORK			0x00004000	/* set if the parent wants the child to wake it up on mm_release */
+#define VKI_CLONE_PARENT		0x00008000	/* set if we want to have the same parent as the cloner */
+#define VKI_CLONE_THREAD		0x00010000	/* Same thread group? */
+#define VKI_CLONE_NEWNS			0x00020000	/* New mount namespace group */
+#define VKI_CLONE_SYSVSEM		0x00040000	/* share system V SEM_UNDO semantics */
+#define VKI_CLONE_SETTLS		0x00080000	/* create a new TLS for the child */
+#define VKI_CLONE_PARENT_SETTID		0x00100000	/* set the TID in the parent */
 #define VKI_CLONE_CHILD_CLEARTID	0x00200000	/* clear the TID in the child */
-#define VKI_CLONE_DETACHED	0x00400000	/* Unused, ignored */
-#define VKI_CLONE_CHILD_SETTID	0x01000000	/* set the TID in the child */
+#define VKI_CLONE_DETACHED		0x00400000	/* Unused, ignored */
+#define VKI_CLONE_UNTRACED		0x00800000	/* set if the tracing process can't force CLONE_PTRACE on this clone */
+#define VKI_CLONE_CHILD_SETTID		0x01000000	/* set the TID in the child */
+#define VKI_CLONE_NEWCGROUP		0x02000000	/* New cgroup namespace */
+#define VKI_CLONE_NEWUTS		0x04000000	/* New utsname namespace */
+#define VKI_CLONE_NEWIPC		0x08000000	/* New ipc namespace */
+#define VKI_CLONE_NEWUSER		0x10000000	/* New user namespace */
+#define VKI_CLONE_NEWPID		0x20000000	/* New pid namespace */
+#define VKI_CLONE_NEWNET		0x40000000	/* New network namespace */
+#define VKI_CLONE_IO			0x80000000	/* Clone io context */
 
 struct vki_sched_param {
 	int sched_priority;
+};
+
+struct vki_sched_attr {
+	vki_uint32_t size;
+	vki_uint32_t sched_policy;
+	vki_uint64_t sched_flags;
+
+	/* SCHED_NORMAL, SCHED_BATCH */
+	vki_int32_t sched_nice;
+
+	/* SCHED_FIFO, SCHED_RR */
+	vki_uint32_t sched_priority;
+
+	/* SCHED_DEADLINE */
+	vki_uint64_t sched_runtime;
+	vki_uint64_t sched_deadline;
+	vki_uint64_t sched_period;
 };
 
 #define VKI_TASK_COMM_LEN 16
@@ -426,6 +479,14 @@ typedef union vki_sigval {
 
 #ifndef __VKI_ARCH_SI_BAND_T
 #define __VKI_ARCH_SI_BAND_T long
+#endif
+
+#ifndef __VKI_ARCH_SI_CLOCK_T
+#define __VKI_ARCH_SI_CLOCK_T vki_clock_t
+#endif
+
+#ifndef __VKI_ARCH_SI_ATTRIBUTES
+#define __VKI_ARCH_SI_ATTRIBUTES
 #endif
 
 // [[Nb: this type changed between 2.4 and 2.6, but not in a way that
@@ -465,8 +526,8 @@ typedef struct vki_siginfo {
 			vki_pid_t _pid;		/* which child */
 			__VKI_ARCH_SI_UID_T _uid;	/* sender's uid */
 			int _status;		/* exit code */
-			vki_clock_t _utime;
-			vki_clock_t _stime;
+			__VKI_ARCH_SI_CLOCK_T _utime;
+			__VKI_ARCH_SI_CLOCK_T _stime;
 		} _sigchld;
 
 		/* SIGILL, SIGFPE, SIGSEGV, SIGBUS */
@@ -483,7 +544,7 @@ typedef struct vki_siginfo {
 			int _fd;
 		} _sigpoll;
 	} _sifields;
-} vki_siginfo_t;
+} __VKI_ARCH_SI_ATTRIBUTES vki_siginfo_t;
 #endif
 
 #define __VKI_SI_FAULT	0
@@ -537,6 +598,16 @@ typedef struct vki_siginfo {
  */
 #define VKI_TRAP_BRKPT      (__VKI_SI_FAULT|1)  /* process breakpoint */
 #define VKI_TRAP_TRACE      (__VKI_SI_FAULT|2)  /* process trace trap */
+
+/*
+ * SIGCHLD si_codes
+ */
+#define VKI_CLD_EXITED    (__VKI_SI_FAULT|1)  /* child has exited */
+#define VKI_CLD_KILLED    (__VKI_SI_FAULT|2)  /* child was killed */
+#define VKI_CLD_DUMPED    (__VKI_SI_FAULT|3)  /* child terminated abnormally */
+#define VKI_CLD_TRAPPED   (__VKI_SI_FAULT|4)  /* traced child has trapped */
+#define VKI_CLD_STOPPED   (__VKI_SI_FAULT|5)  /* child has stopped */
+#define VKI_CLD_CONTINUED (__VKI_SI_FAULT|6)  /* stopped child has continued */
 
 /*
  * This works because the alignment is ok on all current architectures
@@ -1275,6 +1346,8 @@ struct  vki_seminfo {
 
 #define VKI_EWOULDBLOCK		VKI_EAGAIN
 
+#define VKI_ELOOP 40
+
 //----------------------------------------------------------------------
 // From linux-2.6.8.1/include/linux/wait.h
 //----------------------------------------------------------------------
@@ -1290,6 +1363,13 @@ struct  vki_seminfo {
 
 #define VKI_MREMAP_MAYMOVE	1
 #define VKI_MREMAP_FIXED	2
+
+//----------------------------------------------------------------------
+// Common madvise flags mman-common.h
+//----------------------------------------------------------------------
+
+#define VKI_MADV_GUARD_INSTALL 102
+#define VKI_MADV_GUARD_REMOVE  103
 
 //----------------------------------------------------------------------
 // From linux-2.6.31-rc4/include/linux/futex.h
@@ -1342,6 +1422,19 @@ struct vki_robust_list_head {
 	struct vki_robust_list __user *list_op_pending;
 };
 
+/* Introduced in linux commit bf69bad38cf63d980e8a603f8d1bd1f85b5ed3d9 */
+struct vki_futex_waitv {
+	__vki_u64 val;
+	__vki_u64 uaddr;
+	__vki_u32 flags;
+	__vki_u32 __reserved;
+};
+
+struct vki__kernel_timespec {
+	long long tv_sec;
+	long long tv_nsec;
+};
+
 //----------------------------------------------------------------------
 // From linux-2.6.8.1/include/linux/errno.h
 //----------------------------------------------------------------------
@@ -1387,6 +1480,8 @@ struct vki_robust_list_head {
 #define VKI_S_IWOTH 00002
 #define VKI_S_IXOTH 00001
 
+#define VKI_STATX_ALL 0x00000FFFU
+
 struct vki_statx_timestamp {
         __vki_s64   tv_sec;
         __vki_u32   tv_nsec;
@@ -1420,7 +1515,12 @@ struct vki_statx {
         __vki_u32   stx_dev_major;  /* ID of device containing file [uncond] */
         __vki_u32   stx_dev_minor;
         /* 0x90 */
-        __vki_u64   __spare2[14];   /* Spare space for future expansion */
+        __vki_u64   stx_mnt_id;
+        __vki_u32   stx_dio_mem_align;      /* Memory buffer alignment for direct I/O */
+        __vki_u32   stx_dio_offset_align;   /* File offset alignment for direct I/O */
+        /* 0xa0 */
+
+        __vki_u64   __spare2[12];   /* Spare space for future expansion */
         /* 0x100 */
 };
 
@@ -1453,6 +1553,7 @@ struct vki_dirent64 {
 #define VKI_F_SETLEASE      (VKI_F_LINUX_SPECIFIC_BASE + 0)
 #define VKI_F_GETLEASE      (VKI_F_LINUX_SPECIFIC_BASE + 1)
 
+#define VKI_F_CREATED_QUERY (VKI_F_LINUX_SPECIFIC_BASE + 4)
 #define VKI_F_CANCELLK      (VKI_F_LINUX_SPECIFIC_BASE + 5)
 
 #define VKI_F_DUPFD_CLOEXEC (VKI_F_LINUX_SPECIFIC_BASE + 6)
@@ -1461,6 +1562,9 @@ struct vki_dirent64 {
 
 #define VKI_F_SETPIPE_SZ    (VKI_F_LINUX_SPECIFIC_BASE + 7)
 #define VKI_F_GETPIPE_SZ    (VKI_F_LINUX_SPECIFIC_BASE + 8)
+
+#define VKI_F_ADD_SEALS     (VKI_F_LINUX_SPECIFIC_BASE + 9)
+#define VKI_F_GET_SEALS     (VKI_F_LINUX_SPECIFIC_BASE + 10)
 
 struct vki_flock {
 	short			l_type;
@@ -1477,6 +1581,9 @@ struct vki_flock64 {
 	__vki_kernel_loff_t	l_len;
 	__vki_kernel_pid_t	l_pid;
 };
+
+#define VKI_AT_EMPTY_PATH       0x1000  /* Allow empty relative pathname */
+#define VKI_AT_SYMLINK_NOFOLLOW 0x100   /* Do not follow symbolic links.  */
 
 //----------------------------------------------------------------------
 // From linux-2.6.8.1/include/linux/sysctl.h
@@ -1815,7 +1922,63 @@ struct vki_ppdev_frob_struct {
 #define VKI_PPSETFLAGS	_VKI_IOW(VKI_PP_IOCTL, 0x9b, int)
 
 //----------------------------------------------------------------------
-// From linux-3.16/include/uapi/linux/fs.h
+// From linux-5.2.5/include/uapi/linux/loop.h
+//----------------------------------------------------------------------
+
+#define		VKI_LO_NAME_SIZE		64
+#define		VKI_LO_KEY_SIZE			32
+
+struct vki_loop_info {
+
+	int                 lo_number;              /* ioctl r/o */
+	unsigned short      lo_device;              /* ioctl r/o */
+	unsigned long       lo_inode;               /* ioctl r/o */
+	unsigned short      lo_rdevice;             /* ioctl r/o */
+	int                 lo_offset;
+	int                 lo_encrypt_type;
+	int                 lo_encrypt_key_size;    /* ioctl w/o */
+	int                 lo_flags;               /* ioctl r/o */
+	char                lo_name[VKI_LO_NAME_SIZE];
+	unsigned char       lo_encrypt_key[VKI_LO_KEY_SIZE];/* ioctl w/o */
+	unsigned long       lo_init[2];
+	char                reserved[4];
+};
+
+struct vki_loop_info64 {
+	__vki_u64          lo_device;           /* ioctl r/o */
+	__vki_u64          lo_inode;            /* ioctl r/o */
+	__vki_u64          lo_rdevice;          /* ioctl r/o */
+	__vki_u64          lo_offset;
+	__vki_u64          lo_sizelimit;/* bytes, 0 == max available */
+	__vki_u32          lo_number;           /* ioctl r/o */
+	__vki_u32          lo_encrypt_type;
+	__vki_u32          lo_encrypt_key_size; /* ioctl w/o */
+	__vki_u32          lo_flags;            /* ioctl r/o */
+	__vki_u8           lo_file_name[VKI_LO_NAME_SIZE];
+	__vki_u8           lo_crypt_name[VKI_LO_NAME_SIZE];
+	__vki_u8           lo_encrypt_key[VKI_LO_KEY_SIZE]; /* ioctl w/o */
+	__vki_u64          lo_init[2];
+};
+
+/* loopback device related, e.g. see losetup program options */
+#define VKI_LOOP_SET_FD         0x4C00
+#define VKI_LOOP_CLR_FD         0x4C01
+#define VKI_LOOP_SET_STATUS     0x4C02
+#define VKI_LOOP_GET_STATUS     0x4C03
+#define VKI_LOOP_SET_STATUS64   0x4C04
+#define VKI_LOOP_GET_STATUS64   0x4C05
+#define VKI_LOOP_CHANGE_FD      0x4C06
+#define VKI_LOOP_SET_CAPACITY   0x4C07
+#define VKI_LOOP_SET_DIRECT_IO  0x4C08
+#define VKI_LOOP_SET_BLOCK_SIZE 0x4C09
+
+/* ioctls for loop-control device interface */
+#define VKI_LOOP_CTL_ADD        0x4C80 // adds a new loopback device
+#define VKI_LOOP_CTL_REMOVE     0x4C81 // deletes an existing loopback device
+#define VKI_LOOP_CTL_GET_FREE   0x4C82 // finds a free/available loopback device
+
+//----------------------------------------------------------------------
+// From linux-5.2.5/include/uapi/linux/fs.h
 //----------------------------------------------------------------------
 
 #define VKI_BLKROSET   _VKI_IO(0x12,93)	/* set device read-only (0 = read-write) */
@@ -1834,12 +1997,16 @@ struct vki_ppdev_frob_struct {
 #define VKI_BLKBSZSET  _VKI_IOW(0x12,113,vki_size_t)
 #define VKI_BLKGETSIZE64 _VKI_IOR(0x12,114,vki_size_t) /* return device size in bytes (u64 *arg) */
 #define VKI_BLKDISCARD _VKI_IO(0x12,119)
+#define VKI_BLKIOMIN _VKI_IO(0x12,120)
+#define VKI_BLKIOOPT _VKI_IO(0x12,121)
+#define VKI_BLKALIGNOFF _VKI_IO(0x12,122)
 #define VKI_BLKPBSZGET _VKI_IO(0x12,123)
 #define VKI_BLKDISCARDZEROES _VKI_IO(0x12,124)
 #define VKI_BLKZEROOUT _VKI_IO(0x12,127)
 
 #define VKI_FIBMAP	_VKI_IO(0x00,1)	/* bmap access */
 #define VKI_FIGETBSZ    _VKI_IO(0x00,2)	/* get the block size used for bmap */
+#define VKI_FICLONE     _VKI_IOW(0x94, 9, int)
 
 //----------------------------------------------------------------------
 // From linux-2.6.8.1/include/scsi/sg.h
@@ -2590,7 +2757,52 @@ struct vki_vt_consize {
 
 #define VKI_PR_SET_SECCOMP 22
 
+#define VKI_PR_CAPBSET_READ 23
+#define VKI_PR_CAPBSET_DROP 24
+
+#define VKI_PR_GET_TSC 25
+#define VKI_PR_SET_TSC 26
+
+#define VKI_PR_GET_SECUREBITS 27
+#define VKI_PR_SET_SECUREBITS 28
+
+#define VKI_PR_SET_TIMERSLACK 29
+#define VKI_PR_GET_TIMERSLACK 30
+
+#define VKI_PR_TASK_PERF_EVENTS_DISABLE		31
+#define VKI_PR_TASK_PERF_EVENTS_ENABLE		32
+
+#define VKI_PR_MCE_KILL	33
+#define VKI_PR_MCE_KILL_GET 34
+
 #define VKI_PR_SET_PTRACER 0x59616d61
+
+#define VKI_PR_SET_CHILD_SUBREAPER	36
+#define VKI_PR_GET_CHILD_SUBREAPER	37
+
+#define VKI_PR_SET_NO_NEW_PRIVS	38
+#define VKI_PR_GET_NO_NEW_PRIVS	39
+
+#define VKI_PR_GET_TID_ADDRESS	40
+
+#define VKI_PR_SET_THP_DISABLE	41
+#define VKI_PR_GET_THP_DISABLE	42
+
+#define VKI_PR_MPX_ENABLE_MANAGEMENT  43
+#define VKI_PR_MPX_DISABLE_MANAGEMENT 44
+
+#define VKI_PR_SET_FP_MODE		45
+#define VKI_PR_GET_FP_MODE		46
+
+#define VKI_PR_CAP_AMBIENT		47
+
+#define VKI_PR_SVE_SET_VL		50
+#define VKI_PR_SVE_GET_VL		51
+#define VKI_PR_GET_SPECULATION_CTRL	52
+#define VKI_PR_SET_SPECULATION_CTRL	53
+#define VKI_PR_PAC_RESET_KEYS		54
+#define VKI_PR_SET_TAGGED_ADDR_CTRL	55
+#define VKI_PR_GET_TAGGED_ADDR_CTRL	56
 
 //----------------------------------------------------------------------
 // From linux-2.6.19/include/linux/usbdevice_fs.h
@@ -3031,6 +3243,8 @@ struct vki_perf_event_attr {
 #define VKI_PERF_EVENT_IOC_ID           _VKI_IOR('$', 7, __vki_u64 *)
 #define VKI_PERF_EVENT_IOC_SET_BPF      _VKI_IOW('$', 8, __vki_u32)
 
+#define VKI_PERF_FLAG_FD_NO_GROUP       (1UL << 0)
+
 /*--------------------------------------------------------------------*/
 // From linux-2.6.32.4/include/linux/getcpu.h
 /*--------------------------------------------------------------------*/
@@ -3057,6 +3271,9 @@ struct vki_getcpu_cache {
 #define VKI_EVIOCGSW(len)	_VKI_IOC(_VKI_IOC_READ, 'E', 0x1b, len)		/* get all switch states */
 
 #define VKI_EVIOCGBIT(ev,len)	_VKI_IOC(_VKI_IOC_READ, 'E', 0x20 + ev, len)	/* get event bits */
+
+#define VKI_EVIOCGRAB		_VKI_IOW('E', 0x90, int)
+/* grab device */
 
 /*
  * Event types
@@ -3690,30 +3907,62 @@ struct vki_ion_custom_data {
 #define VKI_ION_IOC_CUSTOM \
    _VKI_IOWR(VKI_ION_IOC_MAGIC, 6, struct vki_ion_custom_data)
 
+struct vki_procmap_query {
+    __vki_u64 size;
+    __vki_u64 query_flags;              /* in */
+    __vki_u64 query_addr;               /* in */
+    __vki_u64 vma_start;                /* out */
+    __vki_u64 vma_end;                  /* out */
+    __vki_u64 vma_flags;                /* out */
+    __vki_u64 vma_page_size;            /* out */
+    __vki_u64 vma_offset;               /* out */
+    __vki_u64 inode;                    /* out */
+    __vki_u32 dev_major;                /* out */
+    __vki_u32 dev_minor;                /* out */
+    __vki_u32 vma_name_size;            /* in/out */
+    __vki_u32 build_id_size;            /* in/out */
+    __vki_u64 vma_name_addr;            /* in */
+    __vki_u64 build_id_addr;            /* in */
+};
+
+// linux/fs.h
+#define VKI_PROCFS_IOCTL_MAGIC 'f'
+
+#define VKI_PROCMAP_QUERY \
+   _VKI_IOWR(VKI_PROCFS_IOCTL_MAGIC, 17, struct vki_procmap_query)
+
 //----------------------------------------------------------------------
-// From linux-3.19-rc5/drivers/staging/android/uapi/sync.h
+// From include/uapi/linux/sync_file.h 6.10.3
 //----------------------------------------------------------------------
 
 struct vki_sync_merge_data {
-        __vki_s32 fd2;
         char      name[32];
+        __vki_s32 fd2;
         __vki_s32 fence;
+        __vki_u32 flags;
+	__vki_u32 pad;
 };
 
-struct vki_sync_pt_info {
-        __vki_u32 len;
+struct vki_sync_fence_info {
         char      obj_name[32];
         char      driver_name[32];
         __vki_s32 status;
-        __vki_u64 timestamp_ns;
-        __vki_u8  driver_data[0];
+        __vki_u32 flags;
+	__vki_u64 timestamp_ns;
 };
 
-struct vki_sync_fence_info_data {
-        __vki_u32 len;
+struct vki_sync_file_info {
         char      name[32];
         __vki_s32 status;
-        __vki_u8  pt_info[0];
+        __vki_u32 flags;
+        __vki_u32 num_fences;
+        __vki_u32 pad;
+	__vki_u64 sync_fence_info;
+};
+
+struct vki_sync_set_deadline {
+	__vki_u64 deadline_ns;
+	__vki_u64 pad;
 };
 
 #define VKI_SYNC_IOC_MAGIC   '>'
@@ -3722,10 +3971,13 @@ struct vki_sync_fence_info_data {
    _VKI_IOW(VKI_SYNC_IOC_MAGIC, 0, __vki_s32)
 
 #define VKI_SYNC_IOC_MERGE \
-   _VKI_IOWR(VKI_SYNC_IOC_MAGIC, 1, struct vki_sync_merge_data)
+   _VKI_IOWR(VKI_SYNC_IOC_MAGIC, 3, struct vki_sync_merge_data)
 
-#define VKI_SYNC_IOC_FENCE_INFO \
-   _VKI_IOWR(VKI_SYNC_IOC_MAGIC, 2, struct vki_sync_fence_info_data)
+#define VKI_SYNC_IOC_FILE_INFO \
+   _VKI_IOWR(VKI_SYNC_IOC_MAGIC, 4, struct vki_sync_file_info)
+
+#define VKI_SYNC_IOC_SET_DEADLINE \
+   _VKI_IOW(VKI_SYNC_IOC_MAGIC, 5, struct vki_sync_set_deadline)
 
 //----------------------------------------------------------------------
 // From drivers/staging/lustre/lustre/include/lustre/lustre_user.h
@@ -4869,6 +5121,8 @@ enum vki_bpf_cmd {
 	VKI_BPF_BTF_LOAD,
 	VKI_BPF_BTF_GET_FD_BY_ID,
 	VKI_BPF_TASK_FD_QUERY,
+	VKI_BPF_MAP_LOOKUP_AND_DELETE_ELEM,
+	VKI_BPF_MAP_FREEZE,
 };
 
 enum vki_bpf_map_type {
@@ -5121,6 +5375,310 @@ struct vki_bpf_btf_info {
 	__vki_u32 btf_size;
 	__vki_u32 id;
 } __attribute__((aligned(8)));
+
+//----------------------------------------------------------------------
+// From linux-5.1/include/uapi/linux/pps.h
+//----------------------------------------------------------------------
+
+struct vki_pps_ktime {
+	__vki_s64 sec;
+	__vki_s32 nsec;
+	__vki_u32 flags;
+};
+
+struct vki_pps_kinfo {
+	__vki_u32 assert_sequence;
+	__vki_u32 clear_sequence;
+	struct vki_pps_ktime assert_tu;
+	struct vki_pps_ktime clear_tu;
+	int current_mode;
+};
+
+struct vki_pps_kparams {
+	int api_version;
+	int mode;
+	struct vki_pps_ktime assert_off_tu;
+	struct vki_pps_ktime clear_off_tu;
+};
+
+struct vki_pps_fdata {
+	struct vki_pps_kinfo info;
+	struct vki_pps_ktime timeout;
+};
+
+struct vki_pps_bind_args {
+	int tsformat;
+	int edge;
+	int consumer;
+};
+
+#define VKI_PPS_GETPARAMS	_VKI_IOR('p', 0xa1, struct vki_pps_kparams *)
+#define VKI_PPS_SETPARAMS	_VKI_IOW('p', 0xa2, struct vki_pps_kparams *)
+#define VKI_PPS_GETCAP		_VKI_IOR('p', 0xa3, int *)
+#define VKI_PPS_FETCH		_VKI_IOWR('p', 0xa4, struct vki_pps_fdata *)
+#define VKI_PPS_KC_BIND		_VKI_IOW('p', 0xa5, struct vki_pps_bind_args *)
+
+//----------------------------------------------------------------------
+// From linux-5.1/include/uapi/linux/ptp_clock.h
+//----------------------------------------------------------------------
+
+struct vki_ptp_clock_time {
+	__vki_s64 sec;
+	__vki_u32 nsec;
+	__vki_u32 reserved;
+};
+
+struct vki_ptp_clock_caps {
+	int max_adj;
+	int n_alarm;
+	int n_ext_ts;
+	int n_per_out;
+	int pps;
+	int n_pins;
+	int cross_timestamping;
+	int rsv[13];
+};
+
+struct vki_ptp_extts_request {
+	unsigned int index;
+	unsigned int flags;
+	unsigned int rsv[2];
+};
+
+struct vki_ptp_perout_request {
+	struct vki_ptp_clock_time start;
+	struct vki_ptp_clock_time period;
+	unsigned int index;
+	unsigned int flags;
+	unsigned int rsv[4];
+};
+
+#define VKI_PTP_MAX_SAMPLES 25
+
+struct vki_ptp_sys_offset {
+	unsigned int n_samples;
+	unsigned int rsv[3];
+	struct vki_ptp_clock_time ts[2 * VKI_PTP_MAX_SAMPLES + 1];
+};
+
+struct vki_ptp_sys_offset_extended {
+	unsigned int n_samples;
+	unsigned int rsv[3];
+	struct vki_ptp_clock_time ts[VKI_PTP_MAX_SAMPLES][3];
+};
+
+struct vki_ptp_sys_offset_precise {
+	struct vki_ptp_clock_time device;
+	struct vki_ptp_clock_time sys_realtime;
+	struct vki_ptp_clock_time sys_monoraw;
+	unsigned int rsv[4];
+};
+
+struct vki_ptp_pin_desc {
+	char name[64];
+	unsigned int index;
+	unsigned int func;
+	unsigned int chan;
+	unsigned int rsv[5];
+};
+
+#define VKI_PTP_CLOCK_GETCAPS  _VKI_IOR('=', 1, struct vki_ptp_clock_caps)
+#define VKI_PTP_EXTTS_REQUEST  _VKI_IOW('=', 2, struct vki_ptp_extts_request)
+#define VKI_PTP_PEROUT_REQUEST _VKI_IOW('=', 3, struct vki_ptp_perout_request)
+#define VKI_PTP_ENABLE_PPS     _VKI_IOW('=', 4, int)
+#define VKI_PTP_SYS_OFFSET     _VKI_IOW('=', 5, struct vki_ptp_sys_offset)
+#define VKI_PTP_PIN_GETFUNC    _VKI_IOWR('=', 6, struct vki_ptp_pin_desc)
+#define VKI_PTP_PIN_SETFUNC    _VKI_IOW('=', 7, struct vki_ptp_pin_desc)
+#define VKI_PTP_SYS_OFFSET_PRECISE \
+	_VKI_IOWR('=', 8, struct vki_ptp_sys_offset_precise)
+#define VKI_PTP_SYS_OFFSET_EXTENDED \
+	_VKI_IOWR('=', 9, struct vki_ptp_sys_offset_extended)
+
+/* Needed for 64bit time_t on 32bit arches.  */
+
+typedef vki_int64_t vki_time64_t;
+
+/* Note that this is the padding used by glibc, the kernel uses
+   a 64-bit signed int, but is ignoring the upper 32 bits of the
+   tv_nsec field.  It does always write the full struct though.
+   So this is only needed for PRE_MEM_READ. See pre_read_timespec64. */
+struct vki_timespec64 {
+   vki_time64_t tv_sec;
+#if defined(VKI_BIG_ENDIAN)
+   vki_int32_t tv_pad;
+   vki_int32_t tv_nsec;
+#elif defined(VKI_LITTLE_ENDIAN)
+   vki_int32_t tv_nsec;
+   vki_int32_t tv_pad;
+#else
+#error edit for your odd byteorder.
+#endif
+};
+
+struct vki_itimerspec64 {
+   struct vki_timespec it_interval;
+   struct vki_timespec it_value;
+};
+
+/* From include/linux/openat2.h */
+
+struct vki_open_how {
+    vki_uint64_t vki_flags;
+    vki_uint64_t vki_mode;
+    vki_uint64_t vki_resolve;
+};
+
+#define VKI_RESOLVE_NO_XDEV		0x01
+#define VKI_RESOLVE_NO_MAGICLINKS	0x02
+#define VKI_RESOLVE_NO_SYMLINKS	0x04
+#define VKI_RESOLVE_BENEATH		0x08
+#define VKI_RESOLVE_IN_ROOT		0x10
+#define VKI_RESOLVE_CACHED		0x20
+
+#ifndef VKI_RLIM_INFINITY
+#define VKI_RLIM_INFINITY (~0UL)
+#endif
+
+#define VKI_RLIM64_INFINITY (~0ULL)
+
+#define VKI_CLOSE_RANGE_UNSHARE (1U << 1)
+#define VKI_CLOSE_RANGE_CLOEXEC (1U << 2)
+
+struct vki_cachestat_range {
+    __vki_u64 off;
+    __vki_u64 len;
+};
+
+struct vki_cachestat {
+    __vki_u64 nr_cache;
+    __vki_u64 nr_dirty;
+    __vki_u64 nr_writeback;
+    __vki_u64 nr_evicted;
+    __vki_u64 nr_recently_evicted;
+};
+
+//----------------------------------------------------------------------
+// From linux/magic.h
+//----------------------------------------------------------------------
+
+#define VKI_BTRFS_SUPER_MAGIC    0x9123683E
+
+struct vki__aio_sigset {
+   const vki_sigset_t __user	*sigmask;
+   vki_size_t		sigsetsize;
+};
+
+//----------------------------------------------------------------------
+// From uapi/linux/mount.h
+//----------------------------------------------------------------------
+
+struct vki_mnt_id_req {
+   __vki_u32 size;
+   __vki_u32 spare;
+   __vki_u64 mnt_id;
+   __vki_u64 param;
+   __vki_u64 mnt_ns_id;
+};
+
+struct vki_statmount {
+	__vki_u32 size;		/* Total size, including strings */
+	__vki_u32 mnt_opts;		/* [str] Mount options of the mount */
+	__vki_u64 mask;		/* What results were written */
+	__vki_u32 sb_dev_major;	/* Device ID */
+	__vki_u32 sb_dev_minor;
+	__vki_u64 sb_magic;		/* ..._SUPER_MAGIC */
+	__vki_u32 sb_flags;		/* SB_{RDONLY,SYNCHRONOUS,DIRSYNC,LAZYTIME} */
+	__vki_u32 fs_type;		/* [str] Filesystem type */
+	__vki_u64 mnt_id;		/* Unique ID of mount */
+	__vki_u64 mnt_parent_id;	/* Unique ID of parent (for root == mnt_id) */
+	__vki_u32 mnt_id_old;	/* Reused IDs used in proc/.../mountinfo */
+	__vki_u32 mnt_parent_id_old;
+	__vki_u64 mnt_attr;		/* MOUNT_ATTR_... */
+	__vki_u64 mnt_propagation;	/* MS_{SHARED,SLAVE,PRIVATE,UNBINDABLE} */
+	__vki_u64 mnt_peer_group;	/* ID of shared peer group */
+	__vki_u64 mnt_master;	/* Mount receives propagation from this ID */
+	__vki_u64 propagate_from;	/* Propagation from in current namespace */
+	__vki_u32 mnt_root;		/* [str] Root of mount relative to root of fs */
+	__vki_u32 mnt_point;	/* [str] Mountpoint relative to current root */
+	__vki_u64 mnt_ns_id;	/* ID of the mount namespace */
+	__vki_u64 __spare2[49];
+	char str[];		/* Variable size part containing strings */
+};
+
+//----------------------------------------------------------------------
+// From uapi/linux/fs.h
+//----------------------------------------------------------------------
+
+struct vki_file_attr {
+	__vki_u64 fa_xflags;	/* xflags field value (get/set) */
+	__vki_u32 fa_extsize;	/* extsize field value (get/set)*/
+	__vki_u32 fa_nextents;	/* nextents field value (get)   */
+	__vki_u32 fa_projid;	/* project identifier (get/set) */
+	__vki_u32 fa_cowextsize;	/* CoW extsize field value (get/set) */
+};
+
+//----------------------------------------------------------------------
+// From uapi/linux/mount.h
+//----------------------------------------------------------------------
+
+#define VKI_SUBCMDMASK  0x00ff
+#define VKI_SUBCMDSHIFT 8
+
+#define VKI_Q_SYNC     0x800001	/* sync disk copy of a filesystems quotas */
+#define VKI_Q_QUOTAON  0x800002	/* turn quotas on */
+#define VKI_Q_QUOTAOFF 0x800003	/* turn quotas off */
+#define VKI_Q_GETFMT   0x800004	/* get quota format used on given filesystem */
+#define VKI_Q_GETINFO  0x800005	/* get information about quota files */
+#define VKI_Q_SETINFO  0x800006	/* set information about quota files */
+#define VKI_Q_GETQUOTA 0x800007	/* get user quota structure */
+#define VKI_Q_SETQUOTA 0x800008	/* set user quota structure */
+#define VKI_Q_GETNEXTQUOTA 0x800009	/* get disk limits and usage >= ID */
+
+struct vki_dqblk
+  {
+    __vki_u64 dqb_bhardlimit;	/* absolute limit on disk quota blocks alloc */
+    __vki_u64 dqb_bsoftlimit;	/* preferred limit on disk quota blocks */
+    __vki_u64 dqb_curspace;	/* current quota block count */
+    __vki_u64 dqb_ihardlimit;	/* maximum # allocated inodes */
+    __vki_u64 dqb_isoftlimit;	/* preferred inode limit */
+    __vki_u64 dqb_curinodes;	/* current # allocated inodes */
+    __vki_u64 dqb_btime;	/* time limit for excessive disk use */
+    __vki_u64 dqb_itime;	/* time limit for excessive files */
+    __vki_u32 dqb_valid;	/* bitmask of QIF_* constants */
+  };
+
+
+struct vki_nextdqblk {
+	__vki_u64 dqb_bhardlimit;
+	__vki_u64 dqb_bsoftlimit;
+	__vki_u64 dqb_curspace;
+	__vki_u64 dqb_ihardlimit;
+	__vki_u64 dqb_isoftlimit;
+	__vki_u64 dqb_curinodes;
+	__vki_u64 dqb_btime;
+	__vki_u64 dqb_itime;
+	__vki_u32 dqb_valid;
+	__vki_u32 dqb_id;
+};
+
+struct vki_dqinfo {
+	__vki_u64 dqi_bgrace;
+	__vki_u64 dqi_igrace;
+	__vki_u32 dqi_flags;	/* DFQ_* */
+	__vki_u32 dqi_valid;
+};
+
+//----------------------------------------------------------------------
+// From uapi/linux/lsm.h
+//----------------------------------------------------------------------
+
+struct vki_lsm_ctx {
+	__vki_u64 id;
+	__vki_u64 flags;
+	__vki_u64 len;
+	__vki_u64 ctx_len;
+	__vki_u8 ctx[]; /* __counted_by(ctx_len); */
+};
 
 /*--------------------------------------------------------------------*/
 /*--- end                                                          ---*/

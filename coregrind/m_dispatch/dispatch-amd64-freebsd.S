@@ -1,19 +1,21 @@
 
 /*--------------------------------------------------------------------*/
 /*--- The core dispatch loop, for jumping to a code address.       ---*/
-/*---                                       dispatch-amd64-linux.S ---*/
+/*---                                       dispatch-amd64-freebsd.S ---*/
 /*--------------------------------------------------------------------*/
 
 /*
   This file is part of Valgrind, a dynamic binary instrumentation
   framework.
 
-  Copyright (C) 2000-2012 Julian Seward 
+  Copyright (C) 2000-2017 Julian Seward
      jseward@acm.org
+   Copyright (C) 2018-2021 Paul Floyd
+      pjfloyd@wanadoo.fr
 
   This program is free software; you can redistribute it and/or
   modify it under the terms of the GNU General Public License as
-  published by the Free Software Foundation; either version 2 of the
+  published by the Free Software Foundation; either version 3 of the
   License, or (at your option) any later version.
 
   This program is distributed in the hope that it will be useful, but
@@ -22,16 +24,15 @@
   General Public License for more details.
 
   You should have received a copy of the GNU General Public License
-  along with this program; if not, write to the Free Software
-  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
-  02111-1307, USA.
+  along with this program; if not, see <http://www.gnu.org/licenses/>.
 
   The GNU General Public License is contained in the file COPYING.
 */
 
+#include "pub_core_basics_asm.h"
+
 #if defined(VGP_amd64_freebsd)
 
-#include "pub_core_basics_asm.h"
 #include "pub_core_dispatch_asm.h"
 #include "pub_core_transtab_asm.h"
 #include "libvex_guest_offsets.h"	/* for OFFSET_amd64_RIP */
@@ -51,7 +52,7 @@
 
 /* signature:
 void VG_(disp_run_translations)( UWord* two_words,
-                                 void*  guest_state, 
+                                 void*  guest_state,
                                  Addr   host_addr );
 */
 .text
@@ -84,15 +85,15 @@ VG_(disp_run_translations):
 
         /* Get the host CPU in the state expected by generated code. */
 
-	/* set host FPU control word to the default mode expected 
+	/* set host FPU control word to the default mode expected
            by VEX-generated code.  See comments in libvex.h for
            more info. */
 	finit
 	pushq	$0x027F
 	fldcw	(%rsp)
 	addq	$8, %rsp
-	
-	/* set host SSE control word to the default mode expected 
+
+	/* set host SSE control word to the default mode expected
 	   by VEX-generated code. */
 	pushq	$0x1F80
 	ldmxcsr	(%rsp)
@@ -110,7 +111,7 @@ VG_(disp_run_translations):
            will jump (or call) to one of the continuation points
            VG_(cp_...) below. */
         jmpq    *%rdx
-       	/*NOTREACHED*/	
+        /*NOTREACHED*/
 
 /*----------------------------------------------------*/
 /*--- Postamble and exit.                          ---*/
@@ -122,7 +123,7 @@ postamble:
            holds a TRC value, and %rdx optionally may
            hold another word (for CHAIN_ME exits, the
            address of the place to patch.) */
-        
+
 	/* We're leaving.  Check that nobody messed with %mxcsr
            or %fpucw.  We can't mess with %rax or %rdx here as they
            hold the tentative return values, but any others are OK. */
@@ -166,8 +167,8 @@ remove_frame:
 	popq	%rcx
 	popq	%rbx
 	popq	%rax
-	ret	
-        
+	ret
+ 
 /*----------------------------------------------------*/
 /*--- Continuation points                          ---*/
 /*----------------------------------------------------*/
@@ -204,28 +205,89 @@ VG_(disp_cp_chain_me_to_fastEP):
 .global VG_(disp_cp_xindir)
 VG_(disp_cp_xindir):
 	/* Where are we going? */
-	movq	OFFSET_amd64_RIP(%rbp), %rax
+	movq	OFFSET_amd64_RIP(%rbp), %rax    // "guest"
 
         /* stats only */
-        addl    $1, VG_(stats__n_xindirs_32)
-        
-	/* try a fast lookup in the translation cache */
-	movabsq $VG_(tt_fast), %rcx
-	movq	%rax, %rbx		/* next guest addr */
-	andq	$VG_TT_FAST_MASK, %rbx	/* entry# */
-	shlq	$4, %rbx		/* entry# * sizeof(FastCacheEntry) */
-	movq	0(%rcx,%rbx,1), %r10	/* .guest */
-	movq	8(%rcx,%rbx,1), %r11	/* .host */
-	cmpq	%rax, %r10
-	jnz	fast_lookup_failed
+        addl    $1, VG_(stats__n_xIndirs_32)
 
-        /* Found a match.  Jump to .host. */
-	jmp 	*%r11
-	ud2	/* persuade insn decoders not to speculate past here */
+        // LIVE: %rbp (guest state ptr), %rax (guest address to go to).
+        // We use 4 temporaries:
+        //   %r9 (to point at the relevant FastCacheSet),
+        //   %r10, %r11 and %r12 (scratch).
 
-fast_lookup_failed:
+        /* Try a fast lookup in the translation cache.  This is pretty much
+           a handcoded version of VG_(lookupInFastCache). */
+
+        // Compute %r9 = VG_TT_FAST_HASH(guest)
+        movq    %rax, %r9               // guest
+        shrq    $VG_TT_FAST_BITS, %r9   // (guest >> VG_TT_FAST_BITS)
+        xorq    %rax, %r9               // (guest >> VG_TT_FAST_BITS) ^ guest
+        andq    $VG_TT_FAST_MASK, %r9   // setNo
+
+        // Compute %r9 = &VG_(tt_fast)[%r9]
+        shlq    $VG_FAST_CACHE_SET_BITS, %r9  // setNo * sizeof(FastCacheSet)
+        movabsq $VG_(tt_fast), %r10           // &VG_(tt_fast)[0]
+        leaq    (%r10, %r9), %r9              // &VG_(tt_fast)[setNo]
+
+        // LIVE: %rbp (guest state ptr), %rax (guest addr), %r9 (cache set)
+        // try way 0
+        cmpq    %rax, FCS_g0(%r9)   // cmp against .guest0
+        jnz     1f
+        // hit at way 0
+        jmp    *FCS_h0(%r9)         // goto .host0
+        ud2
+
+1:      // try way 1
+        cmpq    %rax, FCS_g1(%r9)   // cmp against .guest1
+        jnz     2f
+        // hit at way 1; swap upwards
         /* stats only */
-        addl    $1, VG_(stats__n_xindir_misses_32)
+        addl    $1, VG_(stats__n_xIndir_hits1_32)
+        movq    FCS_g0(%r9), %r10   // r10 = old .guest0
+        movq    FCS_h0(%r9), %r11   // r11 = old .host0
+        movq    FCS_h1(%r9), %r12   // r12 = old .host1
+        movq    %rax, FCS_g0(%r9)   // new .guest0 = guest
+        movq    %r12, FCS_h0(%r9)   // new .host0 = old .host1
+        movq    %r10, FCS_g1(%r9)   // new .guest1 = old .guest0
+        movq    %r11, FCS_h1(%r9)   // new .host1 = old .host0
+        jmp     *%r12               // goto old .host1 a.k.a. new .host0
+        ud2
+
+2:      // try way 2
+        cmpq    %rax, FCS_g2(%r9)   // cmp against .guest2
+        jnz     3f
+        // hit at way 2; swap upwards
+        /* stats only */
+        addl    $1, VG_(stats__n_xIndir_hits2_32)
+        movq    FCS_g1(%r9), %r10
+        movq    FCS_h1(%r9), %r11
+        movq    FCS_h2(%r9), %r12
+        movq    %rax, FCS_g1(%r9)
+        movq    %r12, FCS_h1(%r9)
+        movq    %r10, FCS_g2(%r9)
+        movq    %r11, FCS_h2(%r9)
+        jmp     *%r12
+        ud2
+
+3:      // try way 3
+        cmpq    %rax, FCS_g3(%r9)   // cmp against .guest3
+        jnz     4f
+        // hit at way 3; swap upwards
+        /* stats only */
+        addl    $1, VG_(stats__n_xIndir_hits3_32)
+        movq    FCS_g2(%r9), %r10
+        movq    FCS_h2(%r9), %r11
+        movq    FCS_h3(%r9), %r12
+        movq    %rax, FCS_g2(%r9)
+        movq    %r12, FCS_h2(%r9)
+        movq    %r10, FCS_g3(%r9)
+        movq    %r11, FCS_h3(%r9)
+        jmp     *%r12
+        ud2
+
+4:      // fast lookup failed
+        /* stats only */
+        addl    $1, VG_(stats__n_xIndir_misses_32)
 
 	movq	$VG_TRC_INNER_FASTMISS, %rax
         movq    $0, %rdx
@@ -242,18 +304,17 @@ VG_(disp_cp_xassisted):
 /* ------ Event check failed ------ */
 .global VG_(disp_cp_evcheck_fail)
 VG_(disp_cp_evcheck_fail):
-       	movq	$VG_TRC_INNER_COUNTERZERO, %rax
+        movq	$VG_TRC_INNER_COUNTERZERO, %rax
         movq    $0, %rdx
-	jmp	postamble
+        jmp	postamble
 
 
 .size VG_(disp_run_translations), .-VG_(disp_run_translations)
 
-#endif // defined(VGP_amd64_linux)
+#endif // defined(VGP_amd64_freebsd)
 
 /* Let the linker know we don't need an executable stack */
 MARK_STACK_NO_EXEC
-
 
 /*--------------------------------------------------------------------*/
 /*--- end                                                          ---*/

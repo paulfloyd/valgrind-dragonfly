@@ -13,7 +13,7 @@
 
    This program is free software; you can redistribute it and/or
    modify it under the terms of the GNU General Public License as
-   published by the Free Software Foundation; either version 2 of the
+   published by the Free Software Foundation; either version 3 of the
    License, or (at your option) any later version.
 
    This program is distributed in the hope that it will be useful, but
@@ -22,9 +22,7 @@
    General Public License for more details.
 
    You should have received a copy of the GNU General Public License
-   along with this program; if not, write to the Free Software
-   Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
-   02110-1301, USA.
+   along with this program; if not, see <http://www.gnu.org/licenses/>.
 
    The GNU General Public License is contained in the file COPYING.
 
@@ -45,6 +43,7 @@
 #include "libvex_guest_s390x.h"
 #include "libvex_guest_mips32.h"
 #include "libvex_guest_mips64.h"
+#include "libvex_guest_riscv64.h"
 
 #include "main_globals.h"
 #include "main_util.h"
@@ -58,6 +57,8 @@
 #include "host_arm64_defs.h"
 #include "host_s390_defs.h"
 #include "host_mips_defs.h"
+#include "host_nanomips_defs.h"
+#include "host_riscv64_defs.h"
 
 #include "guest_generic_bb_to_IR.h"
 #include "guest_x86_defs.h"
@@ -67,6 +68,8 @@
 #include "guest_ppc_defs.h"
 #include "guest_s390_defs.h"
 #include "guest_mips_defs.h"
+#include "guest_nanomips_defs.h"
+#include "guest_riscv64_defs.h"
 
 #include "host_generic_simd128.h"
 
@@ -155,6 +158,21 @@
 #define MIPS64ST(f) vassert(0)
 #endif
 
+#if defined(VGA_nanomips) || defined(VEXMULTIARCH)
+#define NANOMIPSFN(f) f
+#define NANOMIPSST(f) f
+#else
+#define NANOMIPSFN(f) NULL
+#define NANOMIPSST(f) vassert(0)
+#endif
+
+#if defined(VGA_riscv64) || defined(VEXMULTIARCH)
+#define RISCV64FN(f) f
+#define RISCV64ST(f) f
+#else
+#define RISCV64FN(f) NULL
+#define RISCV64ST(f) vassert(0)
+#endif
 
 /* This file contains the top level interface to the library. */
 
@@ -184,9 +202,14 @@ void LibVEX_default_VexControl ( /*OUT*/ VexControl* vcon )
    vcon->iropt_register_updates_default = VexRegUpdUnwindregsAtMemAccess;
    vcon->iropt_unroll_thresh            = 120;
    vcon->guest_max_insns                = 60;
-   vcon->guest_chase_thresh             = 10;
-   vcon->guest_chase_cond               = False;
+   vcon->guest_chase                    = True;
    vcon->regalloc_version               = 3;
+   vcon->iropt_fold_expr                = True;
+}
+
+void LibVEX_set_VexControl ( VexControl vcon )
+{
+   __builtin_memcpy(&vex_control, &vcon, sizeof vex_control);
 }
 
 
@@ -222,10 +245,7 @@ void LibVEX_Init (
    vassert(vcon->iropt_unroll_thresh <= 400);
    vassert(vcon->guest_max_insns >= 1);
    vassert(vcon->guest_max_insns <= 100);
-   vassert(vcon->guest_chase_thresh >= 0);
-   vassert(vcon->guest_chase_thresh < vcon->guest_max_insns);
-   vassert(vcon->guest_chase_cond == True 
-           || vcon->guest_chase_cond == False);
+   vassert(vcon->guest_chase == False || vcon->guest_chase == True);
    vassert(vcon->regalloc_version == 2 || vcon->regalloc_version == 3);
 
    /* Check that Vex has been built with sizes of basic types as
@@ -520,6 +540,41 @@ IRSB* LibVEX_FrontEnd ( /*MOD*/ VexTranslateArgs* vta,
          vassert(sizeof( ((VexGuestMIPS64State*)0)->guest_NRADDR ) == 8);
          break;
 
+      case VexArchNANOMIPS:
+         preciseMemExnsFn
+            = NANOMIPSFN(guest_mips32_state_requires_precise_mem_exns);
+         disInstrFn              = NANOMIPSFN(disInstr_nanoMIPS);
+         specHelper              = NANOMIPSFN(guest_mips32_spechelper);
+         guest_layout            = NANOMIPSFN(&mips32Guest_layout);
+         offB_CMSTART            = offsetof(VexGuestMIPS32State,guest_CMSTART);
+         offB_CMLEN              = offsetof(VexGuestMIPS32State,guest_CMLEN);
+         offB_GUEST_IP           = offsetof(VexGuestMIPS32State,guest_PC);
+         szB_GUEST_IP            = sizeof( ((VexGuestMIPS32State*)0)->guest_PC );
+         vassert(vta->archinfo_guest.endness == VexEndnessLE
+                 || vta->archinfo_guest.endness == VexEndnessBE);
+         vassert(0 == sizeof(VexGuestMIPS32State) % LibVEX_GUEST_STATE_ALIGN);
+         vassert(sizeof( ((VexGuestMIPS32State*)0)->guest_CMSTART) == 4);
+         vassert(sizeof( ((VexGuestMIPS32State*)0)->guest_CMLEN  ) == 4);
+         vassert(sizeof( ((VexGuestMIPS32State*)0)->guest_NRADDR ) == 4);
+         break;
+
+      case VexArchRISCV64:
+         preciseMemExnsFn
+            = RISCV64FN(guest_riscv64_state_requires_precise_mem_exns);
+         disInstrFn              = RISCV64FN(disInstr_RISCV64);
+         specHelper              = RISCV64FN(guest_riscv64_spechelper);
+         guest_layout            = RISCV64FN(&riscv64guest_layout);
+         offB_CMSTART            = offsetof(VexGuestRISCV64State,guest_CMSTART);
+         offB_CMLEN              = offsetof(VexGuestRISCV64State,guest_CMLEN);
+         offB_GUEST_IP           = offsetof(VexGuestRISCV64State,guest_pc);
+         szB_GUEST_IP            = sizeof( ((VexGuestRISCV64State*)0)->guest_pc );
+         vassert(vta->archinfo_guest.endness == VexEndnessLE);
+         vassert(0 == sizeof(VexGuestRISCV64State) % LibVEX_GUEST_STATE_ALIGN);
+         vassert(sizeof( ((VexGuestRISCV64State*)0)->guest_CMSTART ) == 8);
+         vassert(sizeof( ((VexGuestRISCV64State*)0)->guest_CMLEN   ) == 8);
+         vassert(sizeof( ((VexGuestRISCV64State*)0)->guest_NRADDR  ) == 8);
+         break;
+
       default:
          vpanic("LibVEX_Translate: unsupported guest insn set");
    }
@@ -533,6 +588,8 @@ IRSB* LibVEX_FrontEnd ( /*MOD*/ VexTranslateArgs* vta,
    res->n_sc_extents   = 0;
    res->offs_profInc   = -1;
    res->n_guest_instrs = 0;
+   res->n_uncond_in_trace = 0;
+   res->n_cond_in_trace = 0;
 
 #ifndef VEXMULTIARCH
    /* yet more sanity checks ... */
@@ -560,6 +617,8 @@ IRSB* LibVEX_FrontEnd ( /*MOD*/ VexTranslateArgs* vta,
    irsb = bb_to_IR ( vta->guest_extents,
                      &res->n_sc_extents,
                      &res->n_guest_instrs,
+                     &res->n_uncond_in_trace,
+                     &res->n_cond_in_trace,
                      pxControl,
                      vta->callback_opaque,
                      disInstrFn,
@@ -660,7 +719,7 @@ IRSB* LibVEX_FrontEnd ( /*MOD*/ VexTranslateArgs* vta,
                               vta->guest_extents,
                               &vta->archinfo_host,
                               guest_word_type, host_word_type);
-      
+
    if (vex_traceflags & VEX_TRACE_INST) {
       vex_printf("\n------------------------" 
                    " After instrumentation "
@@ -721,9 +780,9 @@ static void libvex_BackEnd ( const VexTranslateArgs *vta,
                                   const VexAbiInfo*, Int, Int, Bool, Bool,
                                   Addr );
    Int          (*emit)         ( /*MB_MOD*/Bool*,
-                                  UChar*, Int, const HInstr*, Bool, VexEndness,
-                                  const void*, const void*, const void*,
-                                  const void* );
+                                  UChar*, Int, const HInstr*, Bool,
+                                  const VexArchInfo*, const void*,
+                                  const void*, const void*, const void* );
    Bool (*preciseMemExnsFn) ( Int, Int, VexRegisterUpdates );
 
    const RRegUniverse* rRegUniv = NULL;
@@ -845,6 +904,22 @@ static void libvex_BackEnd ( const VexTranslateArgs *vta,
          offB_HOST_EvC_FAILADDR = offsetof(VexGuestMIPS64State,host_EvC_FAILADDR);
          break;
 
+      case VexArchNANOMIPS:
+         preciseMemExnsFn
+            = NANOMIPSFN(guest_mips32_state_requires_precise_mem_exns);
+         guest_sizeB            = sizeof(VexGuestMIPS32State);
+         offB_HOST_EvC_COUNTER  = offsetof(VexGuestMIPS32State,host_EvC_COUNTER);
+         offB_HOST_EvC_FAILADDR = offsetof(VexGuestMIPS32State,host_EvC_FAILADDR);
+         break;
+
+      case VexArchRISCV64:
+         preciseMemExnsFn
+            = RISCV64FN(guest_riscv64_state_requires_precise_mem_exns);
+         guest_sizeB            = sizeof(VexGuestRISCV64State);
+         offB_HOST_EvC_COUNTER  = offsetof(VexGuestRISCV64State,host_EvC_COUNTER);
+         offB_HOST_EvC_FAILADDR = offsetof(VexGuestRISCV64State,host_EvC_FAILADDR);
+         break;
+
       default:
          vpanic("LibVEX_Codegen: unsupported guest insn set");
    }
@@ -928,7 +1003,7 @@ static void libvex_BackEnd ( const VexTranslateArgs *vta,
          genSpill     = CAST_TO_TYPEOF(genSpill) S390FN(genSpill_S390);
          genReload    = CAST_TO_TYPEOF(genReload) S390FN(genReload_S390);
          genMove      = CAST_TO_TYPEOF(genMove) S390FN(genMove_S390);
-         // fixs390: consider implementing directReload_S390
+         directReload = CAST_TO_TYPEOF(directReload) S390FN(directReload_S390);
          ppInstr      = CAST_TO_TYPEOF(ppInstr) S390FN(ppS390Instr);
          ppReg        = CAST_TO_TYPEOF(ppReg) S390FN(ppHRegS390);
          iselSB       = S390FN(iselSB_S390);
@@ -1000,6 +1075,39 @@ static void libvex_BackEnd ( const VexTranslateArgs *vta,
          emit         = CAST_TO_TYPEOF(emit) MIPS64FN(emit_MIPSInstr);
          vassert(vta->archinfo_host.endness == VexEndnessLE
                  || vta->archinfo_host.endness == VexEndnessBE);
+         break;
+
+      case VexArchNANOMIPS:
+         mode64       = False;
+         rRegUniv     = NANOMIPSFN(getRRegUniverse_NANOMIPS(mode64));
+         getRegUsage
+            = CAST_TO_TYPEOF(getRegUsage) NANOMIPSFN(getRegUsage_NANOMIPSInstr);
+         mapRegs      = CAST_TO_TYPEOF(mapRegs) NANOMIPSFN(mapRegs_NANOMIPSInstr);
+         genSpill     = CAST_TO_TYPEOF(genSpill) NANOMIPSFN(genSpill_NANOMIPS);
+         genReload    = CAST_TO_TYPEOF(genReload) NANOMIPSFN(genReload_NANOMIPS);
+         genMove      = CAST_TO_TYPEOF(genMove) NANOMIPSFN(genMove_NANOMIPS);
+         ppInstr      = CAST_TO_TYPEOF(ppInstr) NANOMIPSFN(ppNANOMIPSInstr);
+         ppReg        = CAST_TO_TYPEOF(ppReg) NANOMIPSFN(ppHRegNANOMIPS);
+         iselSB       = NANOMIPSFN(iselSB_NANOMIPS);
+         emit         = CAST_TO_TYPEOF(emit) NANOMIPSFN(emit_NANOMIPSInstr);
+         vassert(vta->archinfo_host.endness == VexEndnessLE
+                 || vta->archinfo_host.endness == VexEndnessBE);
+         break;
+
+      case VexArchRISCV64:
+         mode64       = True;
+         rRegUniv     = RISCV64FN(getRRegUniverse_RISCV64());
+         getRegUsage
+            = CAST_TO_TYPEOF(getRegUsage) RISCV64FN(getRegUsage_RISCV64Instr);
+         mapRegs      = CAST_TO_TYPEOF(mapRegs) RISCV64FN(mapRegs_RISCV64Instr);
+         genSpill     = CAST_TO_TYPEOF(genSpill) RISCV64FN(genSpill_RISCV64);
+         genReload    = CAST_TO_TYPEOF(genReload) RISCV64FN(genReload_RISCV64);
+         genMove      = CAST_TO_TYPEOF(genMove) RISCV64FN(genMove_RISCV64);
+         ppInstr      = CAST_TO_TYPEOF(ppInstr) RISCV64FN(ppRISCV64Instr);
+         ppReg        = CAST_TO_TYPEOF(ppReg) RISCV64FN(ppHRegRISCV64);
+         iselSB       = RISCV64FN(iselSB_RISCV64);
+         emit         = CAST_TO_TYPEOF(emit) RISCV64FN(emit_RISCV64Instr);
+         vassert(vta->archinfo_host.endness == VexEndnessLE);
          break;
 
       default:
@@ -1124,7 +1232,7 @@ static void libvex_BackEnd ( const VexTranslateArgs *vta,
       }
       j = emit( &hi_isProfInc,
                 insn_bytes, sizeof insn_bytes, hi,
-                mode64, vta->archinfo_host.endness,
+                mode64, &vta->archinfo_host,
                 vta->disp_cp_chain_me_to_slowEP,
                 vta->disp_cp_chain_me_to_fastEP,
                 vta->disp_cp_xindir,
@@ -1242,6 +1350,16 @@ VexInvalRange LibVEX_Chain ( VexArch     arch_host,
                                            place_to_chain,
                                            disp_cp_chain_me_EXPECTED,
                                            place_to_jump_to, True/*!mode64*/));
+      case VexArchNANOMIPS:
+         NANOMIPSST(return chainXDirect_NANOMIPS(endness_host,
+                                                 place_to_chain,
+                                                 disp_cp_chain_me_EXPECTED,
+                                                 place_to_jump_to));
+      case VexArchRISCV64:
+         RISCV64ST(return chainXDirect_RISCV64(endness_host,
+                                               place_to_chain,
+                                               disp_cp_chain_me_EXPECTED,
+                                               place_to_jump_to));
       default:
          vassert(0);
    }
@@ -1299,6 +1417,16 @@ VexInvalRange LibVEX_UnChain ( VexArch     arch_host,
                                              place_to_unchain,
                                              place_to_jump_to_EXPECTED,
                                              disp_cp_chain_me, True/*!mode64*/));
+      case VexArchNANOMIPS:
+         NANOMIPSST(return unchainXDirect_NANOMIPS(endness_host,
+                                                 place_to_unchain,
+                                                 place_to_jump_to_EXPECTED,
+                                                 disp_cp_chain_me));
+      case VexArchRISCV64:
+         RISCV64ST(return unchainXDirect_RISCV64(endness_host,
+                                                 place_to_unchain,
+                                                 place_to_jump_to_EXPECTED,
+                                                 disp_cp_chain_me));
       default:
          vassert(0);
    }
@@ -1327,6 +1455,10 @@ Int LibVEX_evCheckSzB ( VexArch    arch_host )
             MIPS32ST(cached = evCheckSzB_MIPS()); break;
          case VexArchMIPS64:
             MIPS64ST(cached = evCheckSzB_MIPS()); break;
+         case VexArchNANOMIPS:
+            NANOMIPSST(cached = evCheckSzB_NANOMIPS()); break;
+         case VexArchRISCV64:
+            RISCV64ST(cached = evCheckSzB_RISCV64()); break;
          default:
             vassert(0);
       }
@@ -1367,6 +1499,12 @@ VexInvalRange LibVEX_PatchProfInc ( VexArch    arch_host,
       case VexArchMIPS64:
          MIPS64ST(return patchProfInc_MIPS(endness_host, place_to_patch,
                                            location_of_counter, True/*!mode64*/));
+      case VexArchNANOMIPS:
+         NANOMIPSST(return patchProfInc_NANOMIPS(endness_host, place_to_patch,
+                                                 location_of_counter));
+      case VexArchRISCV64:
+         RISCV64ST(return patchProfInc_RISCV64(endness_host, place_to_patch,
+                                               location_of_counter));
       default:
          vassert(0);
    }
@@ -1398,28 +1536,14 @@ const HChar* LibVEX_EmNote_string ( VexEmNote ew )
         return "PPC64 function redirection stack overflow";
      case EmWarn_PPC64_redir_underflow:
         return "PPC64 function redirection stack underflow";
-     case EmWarn_S390X_fpext_rounding:
-        return "The specified rounding mode cannot be supported. That\n"
-               "  feature requires the floating point extension facility\n"
-               "  which is not available on this host. Continuing using\n"
-               "  the rounding mode from FPC. Results may differ!";
-     case EmWarn_S390X_invalid_rounding:
-        return "The specified rounding mode is invalid.\n"
-               "  Continuing using 'round to nearest'. Results may differ!";
-     case EmFail_S390X_stfle:
-        return "Instruction stfle is not supported on this host";
-     case EmFail_S390X_stckf:
-        return "Instruction stckf is not supported on this host";
-     case EmFail_S390X_ecag:
-        return "Instruction ecag is not supported on this host";
-     case EmFail_S390X_pfpo:
-        return "Instruction pfpo is not supported on this host";
-     case EmFail_S390X_DFP_insn:
-        return "DFP instructions are not supported on this host";
-     case EmFail_S390X_fpext:
-        return "Encountered an instruction that requires the floating "
-               "point extension facility.\n"
-               "  That facility is not available on this host";
+     case EmWarn_S390X_XxC_not_zero:
+        return "Encountered an insn with the IEEE-inexact-exception control\n"
+               "  (XxC) bit set to 1. This is not supported. Continuing anyway.\n"
+               "  IEEE-inexact exceptions will not be suppressed.";
+     case EmWarn_S390X_XiC_not_zero:
+        return "Encountered an insn with the IEEE-invalid-operation-exception\n"
+               "  control (XiC) bit set to 1. This is not supported. Continuing anyway.\n"
+               "  IEEE-invalid-operation exceptions will not be suppressed.";
      case EmFail_S390X_invalid_PFPO_rounding_mode:
         return "The rounding mode in GPR 0 for the PFPO instruction"
                " is invalid";
@@ -1429,7 +1553,37 @@ const HChar* LibVEX_EmNote_string ( VexEmNote ew )
      case EmFail_S390X_vx:
         return "Encountered an instruction that requires the vector facility.\n"
                "  That facility is not available on this host";
-     default: 
+     case EmFail_S390X_prno:
+        return "Instruction prno is not supported on this host.";
+     case EmFail_S390X_vxe:
+        return "Encountered an instruction that requires the vector-extensions"
+               " facility 1.\n"
+               "  That facility is not available on this host";
+     case EmFail_S390X_dflt:
+        return "Encountered an instruction that requires the deflate-conversion"
+               " facility.\n"
+               "  That facility is not available on this host";
+     case EmFail_S390X_nnpa:
+        return "Encountered an instruction that requires the"
+               " neural-network-processing-assist facility.\n"
+               "  That facility is not available on this host";
+     case EmFail_S390X_vxe2:
+        return "Encountered an instruction that requires the vector-extensions\n"
+               " facility 2.\n"
+               "  That facility is not available on this host";
+     case EmFail_S390X_vxd:
+        return "Encountered an instruction that requires the vector-packed-decimal\n"
+               " facility.\n"
+               "  That facility is not available on this host";
+     case EmFail_S390X_msa8:
+        return "Encountered an instruction that requires the"
+               " message-security-assist extension 8.\n"
+               "  That extension is not available on this host";
+     case EmFail_S390X_msa9:
+        return "Encountered an instruction that requires the"
+               " message-security-assist extension 9.\n"
+               "  That extension is not available on this host";
+     default:
         vpanic("LibVEX_EmNote_string: unknown warning");
    }
 }
@@ -1449,6 +1603,8 @@ const HChar* LibVEX_ppVexArch ( VexArch arch )
       case VexArchS390X:    return "S390X";
       case VexArchMIPS32:   return "MIPS32";
       case VexArchMIPS64:   return "MIPS64";
+      case VexArchNANOMIPS: return "NANOMIPS";
+      case VexArchRISCV64:  return "RISCV64";
       default:              return "VexArch???";
    }
 }
@@ -1483,6 +1639,7 @@ void LibVEX_default_VexArchInfo ( /*OUT*/VexArchInfo* vai )
    vai->ppc_dcbzl_szB           = 0;
    vai->arm64_dMinLine_lg2_szB  = 0;
    vai->arm64_iMinLine_lg2_szB  = 0;
+   vai->arm64_cache_block_size  = 0;
    vai->arm64_requires_fallback_LLSC = False;
    vai->hwcache_info.num_levels = 0;
    vai->hwcache_info.num_caches = 0;
@@ -1497,6 +1654,7 @@ void LibVEX_default_VexAbiInfo ( /*OUT*/VexAbiInfo* vbi )
    vbi->guest_stack_redzone_size       = 0;
    vbi->guest_amd64_assume_fs_is_const = False;
    vbi->guest_amd64_assume_gs_is_const = False;
+   vbi->guest_amd64_sigbus_on_misalign = False;
    vbi->guest_ppc_zap_RZ_at_blr        = False;
    vbi->guest_ppc_zap_RZ_at_bl         = NULL;
    vbi->guest__use_fallback_LLSC       = False;
@@ -1504,11 +1662,13 @@ void LibVEX_default_VexAbiInfo ( /*OUT*/VexAbiInfo* vbi )
 }
 
 
-static IRType arch_word_size (VexArch arch) {
+static IRType arch_word_size (VexArch arch)
+{
    switch (arch) {
       case VexArchX86:
       case VexArchARM:
       case VexArchMIPS32:
+      case VexArchNANOMIPS:
       case VexArchPPC32:
          return Ity_I32;
 
@@ -1517,6 +1677,7 @@ static IRType arch_word_size (VexArch arch) {
       case VexArchMIPS64:
       case VexArchPPC64:
       case VexArchS390X:
+      case VexArchRISCV64:
          return Ity_I64;
 
       default:
@@ -1579,6 +1740,11 @@ static const HChar* show_hwcaps_amd64 ( UInt hwcaps )
       { VEX_HWCAPS_AMD64_AVX,    "avx"    },
       { VEX_HWCAPS_AMD64_AVX2,   "avx2"   },
       { VEX_HWCAPS_AMD64_BMI,    "bmi"    },
+      { VEX_HWCAPS_AMD64_F16C,   "f16c"   },
+      { VEX_HWCAPS_AMD64_RDRAND, "rdrand" },
+      { VEX_HWCAPS_AMD64_RDSEED, "rdseed" },
+      { VEX_HWCAPS_AMD64_FMA3,   "fma"    }, /*fma to keep the same naming as /proc/cpuinfo*/
+      { VEX_HWCAPS_AMD64_FMA4,   "fma4"   },
    };
    /* Allocate a large enough buffer */
    static HChar buf[sizeof prefix + 
@@ -1614,6 +1780,7 @@ static const HChar* show_hwcaps_ppc32 ( UInt hwcaps )
       { VEX_HWCAPS_PPC32_DFP,     "DFP"     },
       { VEX_HWCAPS_PPC32_ISA2_07, "ISA2_07" },
       { VEX_HWCAPS_PPC32_ISA3_0,  "ISA3_0"  },
+      { VEX_HWCAPS_PPC32_ISA3_1,  "ISA3_1"  },
    };
    /* Allocate a large enough buffer */
    static HChar buf[sizeof prefix + 
@@ -1645,6 +1812,7 @@ static const HChar* show_hwcaps_ppc64 ( UInt hwcaps )
       { VEX_HWCAPS_PPC64_DFP,     "DFP"     },
       { VEX_HWCAPS_PPC64_ISA2_07, "ISA2_07" },
       { VEX_HWCAPS_PPC64_ISA3_0,  "ISA3_0"  },
+      { VEX_HWCAPS_PPC64_ISA3_1,  "ISA3_1"  },
    };
    /* Allocate a large enough buffer */
    static HChar buf[sizeof prefix + 
@@ -1693,11 +1861,36 @@ static const HChar* show_hwcaps_arm ( UInt hwcaps )
 
 static const HChar* show_hwcaps_arm64 ( UInt hwcaps )
 {
-   /* Since there are no variants, just insist that hwcaps is zero,
-      and declare it invalid otherwise. */
-  if (hwcaps == 0)
-     return "baseline";
-  return "Unsupported";
+   static const HChar prefix[] = "v8";
+   static const struct {
+      UInt  hwcaps_bit;
+      HChar name[16];
+   } hwcaps_list[] = {
+      { VEX_HWCAPS_ARM64_FHM,         "fhm" },
+      { VEX_HWCAPS_ARM64_DPBCVAP,     "dpcvap" },
+      { VEX_HWCAPS_ARM64_DPBCVADP,    "dpbcvadp" },
+      { VEX_HWCAPS_ARM64_SM3,         "sm3" },
+      { VEX_HWCAPS_ARM64_SM4,         "sm4" },
+      { VEX_HWCAPS_ARM64_SHA3,        "sha3" },
+      { VEX_HWCAPS_ARM64_RDM,         "rdm" },
+      { VEX_HWCAPS_ARM64_I8MM,        "i8mm" },
+      { VEX_HWCAPS_ARM64_ATOMICS,     "atomics" },
+      { VEX_HWCAPS_ARM64_BF16,        "bf16" },
+      { VEX_HWCAPS_ARM64_FP16,        "fp16" },
+      { VEX_HWCAPS_ARM64_VFP16,       "vfp16" },
+   };
+
+   static HChar buf[sizeof prefix +                       // '\0'
+                    NUM_HWCAPS * (sizeof hwcaps_list[0].name + 1) + 1];
+
+   HChar *p = buf + vex_sprintf(buf, "%s", prefix);
+   UInt i;
+   for (i = 0 ; i < NUM_HWCAPS; ++i) {
+      if (hwcaps & hwcaps_list[i].hwcaps_bit)
+         p = p + vex_sprintf(p, "-%s", hwcaps_list[i].name);
+   }
+
+   return buf;
 }
 
 static const HChar* show_hwcaps_s390x ( UInt hwcaps )
@@ -1707,18 +1900,17 @@ static const HChar* show_hwcaps_s390x ( UInt hwcaps )
       UInt  hwcaps_bit;
       HChar name[6];
    } hwcaps_list[] = {
-      { VEX_HWCAPS_S390X_LDISP, "ldisp" },
-      { VEX_HWCAPS_S390X_EIMM,  "eimm" },
-      { VEX_HWCAPS_S390X_GIE,   "gie" },
-      { VEX_HWCAPS_S390X_DFP,   "dfp" },
-      { VEX_HWCAPS_S390X_FGX,   "fgx" },
-      { VEX_HWCAPS_S390X_STFLE, "stfle" },
-      { VEX_HWCAPS_S390X_ETF2,  "etf2" },
-      { VEX_HWCAPS_S390X_ETF3,  "etf3" },
-      { VEX_HWCAPS_S390X_STCKF, "stckf" },
-      { VEX_HWCAPS_S390X_FPEXT, "fpext" },
-      { VEX_HWCAPS_S390X_LSC,   "lsc" },
-      { VEX_HWCAPS_S390X_PFPO,  "pfpo" },
+      { VEX_HWCAPS_S390X_VX,    "vx" },
+      { VEX_HWCAPS_S390X_MSA5,  "msa5" },
+      { VEX_HWCAPS_S390X_MI2,   "mi2" },
+      { VEX_HWCAPS_S390X_LSC2,  "lsc2" },
+      { VEX_HWCAPS_S390X_VXE,   "vxe" },
+      { VEX_HWCAPS_S390X_NNPA,  "nnpa" },
+      { VEX_HWCAPS_S390X_DFLT,  "dflt" },
+      { VEX_HWCAPS_S390X_VXE2,  "vxe2" },
+      { VEX_HWCAPS_S390X_VXD,   "vxd" },
+      { VEX_HWCAPS_S390X_MSA8,  "msa8" },
+      { VEX_HWCAPS_S390X_MSA9,  "msa9" },
    };
    /* Allocate a large enough buffer */
    static HChar buf[sizeof prefix + 
@@ -1822,6 +2014,11 @@ static const HChar* show_hwcaps_mips64 ( UInt hwcaps )
    return "Unsupported baseline";
 }
 
+static const HChar* show_hwcaps_riscv64 ( UInt hwcaps )
+{
+   return "riscv64";
+}
+
 #undef NUM_HWCAPS
 
 /* Thie function must not return NULL. */
@@ -1829,15 +2026,16 @@ static const HChar* show_hwcaps_mips64 ( UInt hwcaps )
 static const HChar* show_hwcaps ( VexArch arch, UInt hwcaps )
 {
    switch (arch) {
-      case VexArchX86:    return show_hwcaps_x86(hwcaps);
-      case VexArchAMD64:  return show_hwcaps_amd64(hwcaps);
-      case VexArchPPC32:  return show_hwcaps_ppc32(hwcaps);
-      case VexArchPPC64:  return show_hwcaps_ppc64(hwcaps);
-      case VexArchARM:    return show_hwcaps_arm(hwcaps);
-      case VexArchARM64:  return show_hwcaps_arm64(hwcaps);
-      case VexArchS390X:  return show_hwcaps_s390x(hwcaps);
-      case VexArchMIPS32: return show_hwcaps_mips32(hwcaps);
-      case VexArchMIPS64: return show_hwcaps_mips64(hwcaps);
+      case VexArchX86:     return show_hwcaps_x86(hwcaps);
+      case VexArchAMD64:   return show_hwcaps_amd64(hwcaps);
+      case VexArchPPC32:   return show_hwcaps_ppc32(hwcaps);
+      case VexArchPPC64:   return show_hwcaps_ppc64(hwcaps);
+      case VexArchARM:     return show_hwcaps_arm(hwcaps);
+      case VexArchARM64:   return show_hwcaps_arm64(hwcaps);
+      case VexArchS390X:   return show_hwcaps_s390x(hwcaps);
+      case VexArchMIPS32:  return show_hwcaps_mips32(hwcaps);
+      case VexArchMIPS64:  return show_hwcaps_mips64(hwcaps);
+      case VexArchRISCV64: return show_hwcaps_riscv64(hwcaps);
       default: return NULL;
    }
 }
@@ -2001,6 +2199,27 @@ static void check_hwcaps ( VexArch arch, UInt hwcaps )
                invalid_hwcaps(arch, hwcaps,
                               "ISA3_0 requires DFP capabilities\n");
          }
+
+         /* ISA3_1 requires everything else */
+         if ((hwcaps & VEX_HWCAPS_PPC64_ISA3_1) != 0) {
+            if ( !((hwcaps
+                    & VEX_HWCAPS_PPC64_ISA3_0) == VEX_HWCAPS_PPC64_ISA3_0))
+               invalid_hwcaps(arch, hwcaps,
+                          "ISA3_1 requires ISA3_0 capabilities\n");
+            if ( !((hwcaps
+                    & VEX_HWCAPS_PPC64_ISA2_07) == VEX_HWCAPS_PPC64_ISA2_07))
+               invalid_hwcaps(arch, hwcaps,
+                          "ISA3_1 requires ISA2_07 capabilities\n");
+            if ( !has_v_fx_gx)
+               invalid_hwcaps(arch, hwcaps,
+                        "ISA3_1 requires VMX and FX and GX capabilities\n");
+            if ( !(hwcaps & VEX_HWCAPS_PPC64_VX))
+               invalid_hwcaps(arch, hwcaps,
+                              "ISA3_1 requires VX capabilities\n");
+            if ( !(hwcaps & VEX_HWCAPS_PPC64_DFP))
+               invalid_hwcaps(arch, hwcaps,
+                              "ISA3_1 requires DFP capabilities\n");
+         }
          return;
       }
 
@@ -2032,16 +2251,17 @@ static void check_hwcaps ( VexArch arch, UInt hwcaps )
          }
       }
 
-      case VexArchARM64:
-         if (hwcaps != 0)
+      case VexArchARM64: {
+         /* Mandatory dependencies. */
+         Bool have_fp16 = ((hwcaps & VEX_HWCAPS_ARM64_FP16) != 0);
+         Bool have_vfp16 = ((hwcaps & VEX_HWCAPS_ARM64_VFP16) != 0);
+         if (have_fp16 != have_vfp16)
             invalid_hwcaps(arch, hwcaps,
-                           "Unsupported hardware capabilities.\n");
+                    "Mismatch detected between scalar and vector FP16 features.\n");
          return;
+      }
 
       case VexArchS390X:
-         if (! s390_host_has_ldisp)
-            invalid_hwcaps(arch, hwcaps,
-                           "Host does not have long displacement facility.\n");
          return;
 
       case VexArchMIPS32:
@@ -2062,9 +2282,23 @@ static void check_hwcaps ( VexArch arch, UInt hwcaps )
             case VEX_PRID_COMP_CAVIUM:
             case VEX_PRID_COMP_NETLOGIC:
                return;
+            case VEX_PRID_COMP_LEGACY:
+               if (VEX_MIPS_PROC_ID(hwcaps) == VEX_PRID_IMP_LOONGSON_64)
+                  return;
+               /* fallthrough */
             default:
                invalid_hwcaps(arch, hwcaps, "Unsupported baseline\n");
          }
+
+      case VexArchNANOMIPS:
+         if (hwcaps == 0)
+            return;
+         invalid_hwcaps(arch, hwcaps, "Unsupported baseline\n");
+
+      case VexArchRISCV64:
+         if (hwcaps == 0)
+            return;
+         invalid_hwcaps(arch, hwcaps, "Cannot handle capabilities\n");
 
       default:
          vpanic("unknown architecture");

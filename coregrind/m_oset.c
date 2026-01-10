@@ -12,7 +12,7 @@
 
    This program is free software; you can redistribute it and/or
    modify it under the terms of the GNU General Public License as
-   published by the Free Software Foundation; either version 2 of the
+   published by the Free Software Foundation; either version 3 of the
    License, or (at your option) any later version.
 
    This program is distributed in the hope that it will be useful, but
@@ -21,9 +21,7 @@
    General Public License for more details.
 
    You should have received a copy of the GNU General Public License
-   along with this program; if not, write to the Free Software
-   Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
-   02111-1307, USA.
+   along with this program; if not, see <http://www.gnu.org/licenses/>.
 
    The GNU General Public License is contained in the file COPYING.
 */
@@ -33,7 +31,9 @@
 //
 //   ANSI C Library for maintenance of AVL Balanced Trees
 //   (C) 2000 Daniel Nagy, Budapest University of Technology and Economics
-//   Released under GNU General Public License (GPL) version 2
+//   Released under GNU General Public License (GPL) version 2+
+//
+//   See also coregrind/m_wordfm.c which has the full (license) history.
 //----------------------------------------------------------------------
 
 // This file implements a generic ordered set using an AVL tree.
@@ -572,7 +572,7 @@ void VG_(OSetWord_Insert)(AvlTree* t, UWord val)
 /*--------------------------------------------------------------------*/
 
 // Find the *node* in t matching k, or NULL if not found.
-static AvlNode* avl_lookup(const AvlTree* t, const void* k)
+static inline AvlNode* avl_lookup(const AvlTree* t, const void* k)
 {
    Word     cmpres;
    AvlNode* curr = t->root;
@@ -606,9 +606,10 @@ static AvlNode* avl_lookup(const AvlTree* t, const void* k)
 // Find the *element* in t matching k, or NULL if not found.
 void* VG_(OSetGen_Lookup)(const AvlTree* t, const void* k)
 {
-   AvlNode* n;
    vg_assert(t);
-   n = avl_lookup(t, k);
+   if (LIKELY(t->root == NULL))
+      return NULL;
+   AvlNode* n = avl_lookup(t, k);
    return ( n ? elem_of_node(n) : NULL );
 }
 
@@ -769,6 +770,8 @@ static Bool avl_removeroot(AvlTree* t)
 // if not present.
 void* VG_(OSetGen_Remove)(AvlTree* t, const void* k)
 {
+   if (LIKELY(t->root == NULL))
+      return NULL;
    // Have to find the node first, then remove it.
    AvlNode* n = avl_lookup(t, k);
    if (n) {

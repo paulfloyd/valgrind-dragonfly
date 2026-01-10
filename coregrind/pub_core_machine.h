@@ -12,7 +12,7 @@
 
    This program is free software; you can redistribute it and/or
    modify it under the terms of the GNU General Public License as
-   published by the Free Software Foundation; either version 2 of the
+   published by the Free Software Foundation; either version 3 of the
    License, or (at your option) any later version.
 
    This program is distributed in the hope that it will be useful, but
@@ -21,9 +21,7 @@
    General Public License for more details.
 
    You should have received a copy of the GNU General Public License
-   along with this program; if not, write to the Free Software
-   Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
-   02111-1307, USA.
+   along with this program; if not, see <http://www.gnu.org/licenses/>.
 
    The GNU General Public License is contained in the file COPYING.
 */
@@ -41,12 +39,12 @@
 #include "pub_core_basics.h"      // UnwindStartRegs
 
 // XXX: this is *really* the wrong spot for these things
-#if defined(VGP_x86_linux) || defined(VGP_x86_solaris) || defined(VGP_x86_dragonfly)
+#if defined(VGP_x86_linux) || defined(VGP_x86_solaris) || defined(VGP_x86_freebsd) || defined(VGP_x86_dragonfly)
 #  define VG_ELF_DATA2XXX     ELFDATA2LSB
 #  define VG_ELF_MACHINE      EM_386
 #  define VG_ELF_CLASS        ELFCLASS32
 #  undef  VG_PLAT_USES_PPCTOC
-#elif defined(VGP_amd64_linux) || defined(VGP_amd64_solaris) || defined(VGP_amd64_dragonfly)
+#elif defined(VGP_amd64_linux) || defined(VGP_amd64_solaris) || defined(VGP_amd64_freebsd) || defined(VGP_amd64_dragonfly)
 #  define VG_ELF_DATA2XXX     ELFDATA2LSB
 #  define VG_ELF_MACHINE      EM_X86_64
 #  define VG_ELF_CLASS        ELFCLASS64
@@ -71,7 +69,7 @@
 #  define VG_ELF_MACHINE      EM_ARM
 #  define VG_ELF_CLASS        ELFCLASS32
 #  undef  VG_PLAT_USES_PPCTOC
-#elif defined(VGP_arm64_linux)
+#elif defined(VGP_arm64_linux) || defined(VGP_arm64_freebsd)
 #  define VG_ELF_DATA2XXX     ELFDATA2LSB
 #  define VG_ELF_MACHINE      EM_AARCH64
 #  define VG_ELF_CLASS        ELFCLASS64
@@ -114,6 +112,25 @@
 #    error Unknown mips64 abi
 #  endif
 #  undef  VG_PLAT_USES_PPCTOC
+#elif defined(VGP_nanomips_linux)
+#  if defined (VG_LITTLEENDIAN)
+#    define VG_ELF_DATA2XXX     ELFDATA2LSB
+#  elif defined (VG_BIGENDIAN)
+#    define VG_ELF_DATA2XXX     ELFDATA2MSB
+#  else
+#    error "Unknown endianness"
+#  endif
+#  if !defined(EM_NANOMIPS)
+#    define EM_NANOMIPS 249   /* MIPS Tech nanoMIPS */
+#  endif
+#  define VG_ELF_MACHINE      EM_NANOMIPS
+#  define VG_ELF_CLASS        ELFCLASS32
+#  undef  VG_PLAT_USES_PPCTOC
+#elif defined(VGP_riscv64_linux)
+#  define VG_ELF_DATA2XXX     ELFDATA2LSB
+#  define VG_ELF_MACHINE      EM_RISCV
+#  define VG_ELF_CLASS        ELFCLASS64
+#  undef  VG_PLAT_USES_PPCTOC
 #else
 #  error Unknown platform
 #endif
@@ -147,14 +164,14 @@
 #  define VG_STACK_PTR        guest_SP
 #  define VG_FRAME_PTR        guest_FP
 #  define VG_FPC_REG          guest_fpc
-#elif defined(VGA_mips32)
+#elif defined(VGA_mips32) || defined(VGA_mips64) || defined(VGA_nanomips)
 #  define VG_INSTR_PTR        guest_PC
 #  define VG_STACK_PTR        guest_r29
 #  define VG_FRAME_PTR        guest_r30
-#elif defined(VGA_mips64)
-#  define VG_INSTR_PTR        guest_PC
-#  define VG_STACK_PTR        guest_r29
-#  define VG_FRAME_PTR        guest_r30
+#elif defined(VGA_riscv64)
+#  define VG_INSTR_PTR        guest_pc
+#  define VG_STACK_PTR        guest_x2
+#  define VG_FRAME_PTR        guest_x8
 #else
 #  error Unknown arch
 #endif
@@ -213,6 +230,7 @@ void VG_(get_UnwindStartRegs) ( /*OUT*/UnwindStartRegs* regs,
    -------------
    ppc64: initially:  call VG_(machine_get_hwcaps)
                       call VG_(machine_ppc64_set_clszB)
+                      call VG_(machine_ppc64_set_scv_support)
 
           then safe to use VG_(machine_get_VexArchInfo) 
                        and VG_(machine_ppc64_has_VMX)
@@ -247,6 +265,7 @@ extern void VG_(machine_ppc32_set_clszB)( Int );
 
 #if defined(VGA_ppc64be) || defined(VGA_ppc64le)
 extern void VG_(machine_ppc64_set_clszB)( Int );
+extern void VG_(machine_ppc64_set_scv_support)( Int );
 #endif
 
 #if defined(VGA_arm)

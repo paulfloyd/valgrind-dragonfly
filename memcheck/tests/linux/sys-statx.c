@@ -1,5 +1,6 @@
 /* Test (somewhat) stats and stat.  */
 #define _GNU_SOURCE
+#include "config.h"
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <unistd.h>
@@ -7,11 +8,14 @@
 #include <assert.h>
 #include <string.h>
 #include <sys/syscall.h>
-#if __GLIBC_PREREQ(2,28)
-/* struct statx provided in sys/stat.h */
+#if defined(MUSL_LIBC)
+/* musl has __NR_statx but not the structs that it needs */
+#undef __NR_statx
 #else
+#if !defined(HAVE_STRUCT_STATX_IN_SYS_STAT_H)
 #include <linux/stat.h>
-#endif
+#endif /* HAVE_STRUCT_STATX_IN_SYS_STAT_H */
+#endif /* MUSL_LIBC */
 #include <errno.h>
 
 int check_stat2;

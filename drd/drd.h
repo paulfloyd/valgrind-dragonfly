@@ -3,7 +3,7 @@
 
   Notice that the following BSD-style license applies to this one
   file (drd.h) only.  The rest of Valgrind is licensed under the
-  terms of the GNU General Public License, version 2, unless
+  terms of the GNU General Public License, version 3, unless
   otherwise indicated.  See the COPYING file in the source
   distribution for details.
 
@@ -12,7 +12,7 @@
   This file is part of DRD, a Valgrind tool for verification of
   multithreaded programs.
 
-  Copyright (C) 2006-2017 Bart Van Assche <bvanassche@acm.org>.
+  Copyright (C) 2006-2020 Bart Van Assche <bvanassche@acm.org>.
   All rights reserved.
 
   Redistribution and use in source and binary forms, with or without
@@ -50,7 +50,7 @@
 
   Notice that the above BSD-style license applies to this one file
   (drd.h) only.  The entire rest of Valgrind is licensed under
-  the terms of the GNU General Public License, version 2.  See the
+  the terms of the GNU General Public License, version 3.  See the
   COPYING file in the source distribution for details.
 
   ----------------------------------------------------------------

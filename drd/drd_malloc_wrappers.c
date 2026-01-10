@@ -1,11 +1,11 @@
 /*
   This file is part of drd, a thread error detector.
 
-  Copyright (C) 2006-2017 Bart Van Assche <bvanassche@acm.org>.
+  Copyright (C) 2006-2020 Bart Van Assche <bvanassche@acm.org>.
 
   This program is free software; you can redistribute it and/or
   modify it under the terms of the GNU General Public License as
-  published by the Free Software Foundation; either version 2 of the
+  published by the Free Software Foundation; either version 3 of the
   License, or (at your option) any later version.
 
   This program is distributed in the hope that it will be useful, but
@@ -14,9 +14,7 @@
   General Public License for more details.
 
   You should have received a copy of the GNU General Public License
-  along with this program; if not, write to the Free Software
-  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
-  02111-1307, USA.
+  along with this program; if not, see <http://www.gnu.org/licenses/>.
 
   The GNU General Public License is contained in the file COPYING.
 */
@@ -149,7 +147,7 @@ static void* drd_malloc(ThreadId tid, SizeT n)
 }
 
 /** Wrapper for memalign(). */
-static void* drd_memalign(ThreadId tid, SizeT align, SizeT n)
+static void* drd_memalign(ThreadId tid, SizeT align, SizeT orig_alignT, SizeT n)
 {
    return new_block(tid, n, align, /*is_zeroed*/False);
 }
@@ -186,8 +184,12 @@ static void* drd_realloc(ThreadId tid, void* p_old, SizeT new_size)
 
    if (new_size == 0)
    {
-      drd_free(tid, p_old);
-      return NULL;
+      if (VG_(clo_realloc_zero_bytes_frees) == True)
+      {
+         drd_free(tid, p_old);
+         return NULL;
+      }
+      new_size = 1;
    }
 
    s_cmalloc_n_mallocs++;
@@ -255,8 +257,20 @@ static void* drd___builtin_new(ThreadId tid, SizeT n)
    return new_block(tid, n, VG_(clo_alignment), /*is_zeroed*/False);
 }
 
+/** Wrapper for __builtin_new_aligned(). */
+static void* drd___builtin_new_aligned(ThreadId tid, SizeT n, SizeT align, SizeT orig_align)
+{
+   return new_block(tid, n, align, /*is_zeroed*/False);
+}
+
 /** Wrapper for __builtin_delete(). */
 static void drd___builtin_delete(ThreadId tid, void* p)
+{
+   handle_free(tid, p);
+}
+
+/** Wrapper for __builtin_delete_aligned(). */
+static void drd___builtin_delete_aligned(ThreadId tid, void* p, SizeT align)
 {
    handle_free(tid, p);
 }
@@ -267,8 +281,20 @@ static void* drd___builtin_vec_new(ThreadId tid, SizeT n)
    return new_block(tid, n, VG_(clo_alignment), /*is_zeroed*/False);
 }
 
+/** Wrapper for __builtin_vec_new_aligned(). */
+static void* drd___builtin_vec_new_aligned(ThreadId tid, SizeT n, SizeT align, SizeT orig_align)
+{
+   return new_block(tid, n, align, /*is_zeroed*/False);
+}
+
 /** Wrapper for __builtin_vec_delete(). */
 static void drd___builtin_vec_delete(ThreadId tid, void* p)
+{
+   handle_free(tid, p);
+}
+
+/** Wrapper for __builtin_vec_delete_aligned(). */
+static void drd___builtin_vec_delete_aligned(ThreadId tid, void* p, SizeT align)
 {
    handle_free(tid, p);
 }
@@ -301,12 +327,16 @@ void DRD_(register_malloc_wrappers)(const StartUsingMem start_callback,
 
    VG_(needs_malloc_replacement)(drd_malloc,
                                  drd___builtin_new,
+                                 drd___builtin_new_aligned,
                                  drd___builtin_vec_new,
+                                 drd___builtin_vec_new_aligned,
                                  drd_memalign,
                                  drd_calloc,
                                  drd_free,
                                  drd___builtin_delete,
+                                 drd___builtin_delete_aligned,
                                  drd___builtin_vec_delete,
+                                 drd___builtin_vec_delete_aligned,
                                  drd_realloc,
                                  drd_malloc_usable_size,
                                  0);

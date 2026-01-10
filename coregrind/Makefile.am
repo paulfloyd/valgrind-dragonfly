@@ -11,12 +11,12 @@ include $(top_srcdir)/Makefile.all.am
 
 AM_CPPFLAGS_@VGCONF_PLATFORM_PRI_CAPS@ += \
 	-I$(top_srcdir)/coregrind \
-	-DVG_LIBDIR="\"$(pkglibdir)"\" \
+	-DVG_LIBDIR="\"$(pkglibexecdir)"\" \
 	-DVG_PLATFORM="\"@VGCONF_ARCH_PRI@-@VGCONF_OS@\""
 if VGCONF_HAVE_PLATFORM_SEC
 AM_CPPFLAGS_@VGCONF_PLATFORM_SEC_CAPS@ += \
 	-I$(top_srcdir)/coregrind \
-	-DVG_LIBDIR="\"$(pkglibdir)"\" \
+	-DVG_LIBDIR="\"$(pkglibexecdir)"\" \
 	-DVG_PLATFORM="\"@VGCONF_ARCH_SEC@-@VGCONF_OS@\""
 endif
 
@@ -34,6 +34,8 @@ bin_PROGRAMS = \
 	valgrind \
 	vgdb
 
+bin_SCRIPTS = vgstack
+
 if VGCONF_OS_IS_LINUX
 valgrind_SOURCES = \
 	launcher-linux.c \
@@ -49,6 +51,11 @@ valgrind_SOURCES = \
 	launcher-linux.c \
 	m_debuglog.c
 endif
+if VGCONF_OS_IS_FREEBSD
+valgrind_SOURCES = \
+	launcher-freebsd.c \
+	m_debuglog.c
+endif
 if VGCONF_OS_IS_DRAGONFLY
 valgrind_SOURCES = \
 	launcher-dragonfly.c \
@@ -60,7 +67,7 @@ AR = ${LTO_AR}
 RANLIB = ${LTO_RANLIB}
 
 valgrind_CPPFLAGS  = $(AM_CPPFLAGS_PRI)
-valgrind_CFLAGS    = $(AM_CFLAGS_PRI) $(LTO_CFLAGS)
+valgrind_CFLAGS    = $(AM_CFLAGS_PRI) $(LTO_CFLAGS) -fhosted
 valgrind_CCASFLAGS = $(AM_CCASFLAGS_PRI)
 valgrind_LDFLAGS   = $(AM_CFLAGS_PRI) @LIB_UBSAN@
 # If there is no secondary platform, and the platforms include x86-darwin,
@@ -80,7 +87,7 @@ valgrind_LDFLAGS   += -Wl,-M,/usr/lib/ld/map.noexstk
 endif
 
 
-vgdb_SOURCES = vgdb.c
+vgdb_SOURCES = vgdb.c m_gdbserver/remote-utils-shared.c
 if VGCONF_OS_IS_LINUX
 if VGCONF_PLATVARIANT_IS_ANDROID
 vgdb_SOURCES += vgdb-invoker-none.c
@@ -97,12 +104,15 @@ endif
 if VGCONF_OS_IS_SOLARIS
 vgdb_SOURCES += vgdb-invoker-solaris.c
 endif
+if VGCONF_OS_IS_FREEBSD
+vgdb_SOURCES += vgdb-invoker-freebsd.c
+endif
 if VGCONF_OS_IS_DRAGONFLY
 vgdb_SOURCES += vgdb-invoker-none.c
 endif
 
-vgdb_CPPFLAGS  = $(AM_CPPFLAGS_PRI)
-vgdb_CFLAGS    = $(AM_CFLAGS_PRI) $(LTO_CFLAGS)
+vgdb_CPPFLAGS  = $(AM_CPPFLAGS_PRI) $(GDB_SCRIPTS_DIR)
+vgdb_CFLAGS    = $(AM_CFLAGS_PRI) $(LTO_CFLAGS) -fhosted
 vgdb_CCASFLAGS = $(AM_CCASFLAGS_PRI)
 vgdb_LDFLAGS   = $(AM_CFLAGS_PRI) @LIB_UBSAN@
 if VGCONF_PLATVARIANT_IS_ANDROID
@@ -165,10 +175,10 @@ mach_hdrs += \
         m_mach/thread_act.h \
         m_mach/vm_map.h
 mach_defs += \
-	/usr/include/mach/mach_vm.defs \
-        /usr/include/mach/task.defs \
-        /usr/include/mach/thread_act.defs \
-        /usr/include/mach/vm_map.defs
+  @SDK_INC_DIR@/mach/mach_vm.defs \
+  @SDK_INC_DIR@/mach/task.defs \
+  @SDK_INC_DIR@/mach/thread_act.defs \
+  @SDK_INC_DIR@/mach/vm_map.defs
 endif
 
 # Be careful w.r.t. parallel builds.  See section 27.9 of the automake info
@@ -176,9 +186,9 @@ endif
 $(abs_builddir)/m_mach: 
 	mkdir -p $@
 $(mach_user_srcs): $(mach_defs) $(abs_builddir)/m_mach
-	(cd m_mach && mig $(mach_defs))
+	(cd m_mach && mig -I@SDK_INC_DIR@ $(mach_defs))
 $(mach_hdrs): $(mach_defs) $(mach_user_srcs) $(abs_builddir)/m_mach
-	(cd m_mach && mig $(mach_defs))
+	(cd m_mach && mig -I@SDK_INC_DIR@ $(mach_defs))
 
 #----------------------------------------------------------------------------
 # Headers
@@ -203,6 +213,7 @@ noinst_HEADERS = \
 	pub_core_dispatch_asm.h	\
 	pub_core_errormgr.h	\
 	pub_core_execontext.h	\
+	pub_core_extension.h    \
 	pub_core_gdbserver.h	\
 	pub_core_guest.h	\
 	pub_core_hashtable.h	\
@@ -220,6 +231,7 @@ noinst_HEADERS = \
 	pub_core_mallocfree.h	\
 	pub_core_options.h	\
 	pub_core_oset.h		\
+	pub_core_pathscan.h     \
 	pub_core_poolalloc.h	\
 	pub_core_rangemap.h	\
 	pub_core_redir.h	\
@@ -263,19 +275,22 @@ noinst_HEADERS = \
 	m_debuginfo/lzoconf.h		\
 	m_debuginfo/lzodefs.h		\
 	m_debuginfo/minilzo.h		\
+	m_debuginfo/zstd.h              \
 	m_demangle/ansidecl.h	\
 	m_demangle/cp-demangle.h \
 	m_demangle/dyn-string.h	\
 	m_demangle/demangle.h	\
 	m_demangle/safe-ctype.h \
 	m_demangle/vg_libciface.h \
+	m_extension/priv_extension.h \
+	m_extension/priv_types_n_macros.h \
 	m_gdbserver/regcache.h \
 	m_gdbserver/regdef.h \
 	m_gdbserver/server.h \
+	m_gdbserver/remote-utils-shared.h \
 	m_gdbserver/target.h \
 	m_gdbserver/valgrind_low.h \
 	m_gdbserver/gdb/signals.h \
-	m_initimg/priv_initimg_pathscan.h \
 	m_scheduler/priv_sema.h \
 	m_scheduler/priv_sched-lock.h \
 	m_scheduler/priv_sched-lock-impl.h \
@@ -284,6 +299,7 @@ noinst_HEADERS = \
 	m_syswrap/priv_syswrap-generic.h \
 	m_syswrap/priv_syswrap-linux.h \
 	m_syswrap/priv_syswrap-linux-variants.h \
+	m_syswrap/priv_syswrap-freebsd.h \
 	m_syswrap/priv_syswrap-dragonfly.h \
 	m_syswrap/priv_syswrap-darwin.h \
 	m_syswrap/priv_syswrap-solaris.h \
@@ -326,6 +342,7 @@ COREGRIND_SOURCES_COMMON = \
 	m_mallocfree.c \
 	m_options.c \
 	m_oset.c \
+	m_pathscan.c \
 	m_poolalloc.c \
 	m_rangemap.c \
 	m_redir.c \
@@ -333,7 +350,6 @@ COREGRIND_SOURCES_COMMON = \
 	m_seqmatch.c \
 	m_signals.c \
 	m_sparsewa.c \
-	m_stacks.c \
 	m_stacktrace.c \
 	m_syscall.c \
 	m_threadstate.c \
@@ -368,6 +384,7 @@ COREGRIND_SOURCES_COMMON = \
 	m_debuginfo/storage.c \
 	m_debuginfo/tinfl.c \
 	m_debuginfo/tytypes.c \
+	m_debuginfo/zstddeclib.c \
 	m_demangle/cp-demangle.c \
 	m_demangle/cplus-dem.c \
 	m_demangle/demangle.c \
@@ -385,16 +402,23 @@ COREGRIND_SOURCES_COMMON = \
 	m_dispatch/dispatch-s390x-linux.S \
 	m_dispatch/dispatch-mips32-linux.S \
 	m_dispatch/dispatch-mips64-linux.S \
+	m_dispatch/dispatch-nanomips-linux.S \
+	m_dispatch/dispatch-riscv64-linux.S \
+	m_dispatch/dispatch-x86-freebsd.S \
+	m_dispatch/dispatch-amd64-freebsd.S \
+	m_dispatch/dispatch-arm64-freebsd.S \
 	m_dispatch/dispatch-x86-dragonfly.S \
 	m_dispatch/dispatch-amd64-dragonfly.S \
 	m_dispatch/dispatch-x86-darwin.S \
 	m_dispatch/dispatch-amd64-darwin.S \
 	m_dispatch/dispatch-x86-solaris.S \
 	m_dispatch/dispatch-amd64-solaris.S \
+	m_extension/extension-main.c \
+	m_extension/extension-s390x.c \
 	m_gdbserver/inferiors.c \
-	m_gdbserver/m_gdbserver.c \
 	m_gdbserver/regcache.c \
 	m_gdbserver/remote-utils.c \
+	m_gdbserver/remote-utils-shared-gdbserver.c \
 	m_gdbserver/server.c \
 	m_gdbserver/signals.c \
 	m_gdbserver/target.c \
@@ -408,16 +432,20 @@ COREGRIND_SOURCES_COMMON = \
 	m_gdbserver/valgrind-low-s390x.c \
 	m_gdbserver/valgrind-low-mips32.c \
 	m_gdbserver/valgrind-low-mips64.c \
+	m_gdbserver/valgrind-low-nanomips.c \
+	m_gdbserver/valgrind-low-riscv64.c \
 	m_gdbserver/version.c \
 	m_initimg/initimg-linux.c \
+	m_initimg/initimg-freebsd.c \
 	m_initimg/initimg-dragonfly.c \
 	m_initimg/initimg-darwin.c \
 	m_initimg/initimg-solaris.c \
-	m_initimg/initimg-pathscan.c \
 	m_mach/mach_basics.c \
 	m_mach/mach_msg.c \
 	m_mach/mach_traps-x86-darwin.S \
 	m_mach/mach_traps-amd64-darwin.S \
+	m_mach/mig_strncpy.c \
+        m_mach/dyld_cache.c \
 	m_replacemalloc/replacemalloc_core.c \
 	m_scheduler/sched-lock.c \
 	m_scheduler/sched-lock-generic.c \
@@ -426,6 +454,9 @@ COREGRIND_SOURCES_COMMON = \
 	m_sigframe/sigframe-common.c \
 	m_sigframe/sigframe-x86-linux.c \
 	m_sigframe/sigframe-amd64-linux.c \
+	m_sigframe/sigframe-x86-freebsd.c \
+	m_sigframe/sigframe-amd64-freebsd.c \
+	m_sigframe/sigframe-arm64-freebsd.c \
 	m_sigframe/sigframe-x86-dragonfly.c \
 	m_sigframe/sigframe-amd64-dragonfly.c \
 	m_sigframe/sigframe-ppc32-linux.c \
@@ -435,6 +466,8 @@ COREGRIND_SOURCES_COMMON = \
 	m_sigframe/sigframe-s390x-linux.c \
 	m_sigframe/sigframe-mips32-linux.c \
 	m_sigframe/sigframe-mips64-linux.c \
+	m_sigframe/sigframe-nanomips-linux.c \
+	m_sigframe/sigframe-riscv64-linux.c \
 	m_sigframe/sigframe-x86-darwin.c \
 	m_sigframe/sigframe-amd64-darwin.c \
 	m_sigframe/sigframe-solaris.c \
@@ -448,6 +481,11 @@ COREGRIND_SOURCES_COMMON = \
 	m_syswrap/syscall-s390x-linux.S \
 	m_syswrap/syscall-mips32-linux.S \
 	m_syswrap/syscall-mips64-linux.S \
+	m_syswrap/syscall-nanomips-linux.S \
+	m_syswrap/syscall-riscv64-linux.S \
+	m_syswrap/syscall-x86-freebsd.S \
+	m_syswrap/syscall-amd64-freebsd.S \
+	m_syswrap/syscall-arm64-freebsd.S \
 	m_syswrap/syscall-x86-dragonfly.S \
 	m_syswrap/syscall-amd64-dragonfly.S \
 	m_syswrap/syscall-x86-darwin.S \
@@ -458,6 +496,7 @@ COREGRIND_SOURCES_COMMON = \
 	m_syswrap/syswrap-generic.c \
 	m_syswrap/syswrap-linux.c \
 	m_syswrap/syswrap-linux-variants.c \
+	m_syswrap/syswrap-freebsd.c \
 	m_syswrap/syswrap-dragonfly.c \
 	m_syswrap/syswrap-dragonfly-variants.c \
 	m_syswrap/syswrap-darwin.c \
@@ -466,6 +505,9 @@ COREGRIND_SOURCES_COMMON = \
 	m_syswrap/syswrap-amd64-linux.c \
 	m_syswrap/syswrap-ppc32-linux.c \
 	m_syswrap/syswrap-ppc64-linux.c \
+	m_syswrap/syswrap-x86-freebsd.c \
+	m_syswrap/syswrap-amd64-freebsd.c \
+	m_syswrap/syswrap-arm64-freebsd.c \
 	m_syswrap/syswrap-x86-dragonfly.c \
 	m_syswrap/syswrap-amd64-dragonfly.c \
 	m_syswrap/syswrap-arm-linux.c \
@@ -473,6 +515,8 @@ COREGRIND_SOURCES_COMMON = \
 	m_syswrap/syswrap-s390x-linux.c \
 	m_syswrap/syswrap-mips32-linux.c \
 	m_syswrap/syswrap-mips64-linux.c \
+	m_syswrap/syswrap-nanomips-linux.c \
+	m_syswrap/syswrap-riscv64-linux.c \
 	m_syswrap/syswrap-x86-darwin.c \
 	m_syswrap/syswrap-amd64-darwin.c \
 	m_syswrap/syswrap-xen.c \
@@ -489,7 +533,9 @@ COREGRIND_SOURCES_COMMON = \
 # These objects are added to the libcoregrind library.
 NOLTO_COREGRIND_SOURCES_COMMON = \
 	m_libcsetjmp.c \
-	m_main.c
+	m_main.c \
+	m_stacks.c \
+	m_gdbserver/m_gdbserver.c
 noinst_LIBRARIES = libnolto_coregrind-@VGCONF_ARCH_PRI@-@VGCONF_OS@.a
 libnolto_coregrind_@VGCONF_ARCH_PRI@_@VGCONF_OS@_a_SOURCES = \
     $(NOLTO_COREGRIND_SOURCES_COMMON)
@@ -558,6 +604,32 @@ libcoregrind_@VGCONF_ARCH_SEC@_@VGCONF_OS@_a_DEPENDENCIES = \
 endif
 
 #----------------------------------------------------------------------------
+# libgcc-sup-<platform>.a
+# Special supplemental library for functions normally supplied by glibc
+# used by libgcc.
+#----------------------------------------------------------------------------
+
+pkglib_LIBRARIES  += libgcc-sup-@VGCONF_ARCH_PRI@-@VGCONF_OS@.a
+if VGCONF_HAVE_PLATFORM_SEC
+pkglib_LIBRARIES += libgcc-sup-@VGCONF_ARCH_SEC@-@VGCONF_OS@.a
+endif
+
+libgcc_sup_@VGCONF_ARCH_PRI@_@VGCONF_OS@_a_SOURCES = \
+	m_libgcc_sup.c
+libgcc_sup_@VGCONF_ARCH_PRI@_@VGCONF_OS@_a_CPPFLAGS = \
+	$(AM_CPPFLAGS_@VGCONF_PLATFORM_PRI_CAPS@)
+libgcc_sup_@VGCONF_ARCH_PRI@_@VGCONF_OS@_a_CFLAGS = \
+	$(AM_CFLAGS_PSO_@VGCONF_PLATFORM_PRI_CAPS@)
+if VGCONF_HAVE_PLATFORM_SEC
+libgcc_sup_@VGCONF_ARCH_SEC@_@VGCONF_OS@_a_SOURCES = \
+	m_libgcc_sup.c
+libgcc_sup_@VGCONF_ARCH_SEC@_@VGCONF_OS@_a_CPPFLAGS = \
+	$(AM_CPPFLAGS_@VGCONF_PLATFORM_SEC_CAPS@)
+libgcc_sup_@VGCONF_ARCH_SEC@_@VGCONF_OS@_a_CFLAGS = \
+	$(AM_CFLAGS_PSO_@VGCONF_PLATFORM_SEC_CAPS@)
+endif
+
+#----------------------------------------------------------------------------
 # libreplacemalloc_toolpreload-<platform>.a
 #----------------------------------------------------------------------------
 
@@ -594,9 +666,15 @@ if VGCONF_OS_IS_DARWIN
 noinst_DSYMS = $(noinst_PROGRAMS)
 endif
 
+if GDBSCRIPTS
+  GDB_SCRIPTS_DIR=-DVG_GDBSCRIPTS_DIR="\"@VG_GDBSCRIPTS_DIR@\""
+else
+  GDB_SCRIPTS_DIR=
+endif
+
 vgpreload_core_@VGCONF_ARCH_PRI@_@VGCONF_OS@_so_SOURCES = vg_preloaded.c
 vgpreload_core_@VGCONF_ARCH_PRI@_@VGCONF_OS@_so_CPPFLAGS = \
-	$(AM_CPPFLAGS_@VGCONF_PLATFORM_PRI_CAPS@)
+	$(AM_CPPFLAGS_@VGCONF_PLATFORM_PRI_CAPS@) $(GDB_SCRIPTS_DIR)
 vgpreload_core_@VGCONF_ARCH_PRI@_@VGCONF_OS@_so_CFLAGS = \
 	$(AM_CFLAGS_PSO_@VGCONF_PLATFORM_PRI_CAPS@)
 vgpreload_core_@VGCONF_ARCH_PRI@_@VGCONF_OS@_so_LDFLAGS = \
@@ -604,7 +682,7 @@ vgpreload_core_@VGCONF_ARCH_PRI@_@VGCONF_OS@_so_LDFLAGS = \
 if VGCONF_HAVE_PLATFORM_SEC
 vgpreload_core_@VGCONF_ARCH_SEC@_@VGCONF_OS@_so_SOURCES = vg_preloaded.c
 vgpreload_core_@VGCONF_ARCH_SEC@_@VGCONF_OS@_so_CPPFLAGS = \
-	$(AM_CPPFLAGS_@VGCONF_PLATFORM_SEC_CAPS@)
+	$(AM_CPPFLAGS_@VGCONF_PLATFORM_SEC_CAPS@) $(GDBSCRIPTS_DIR)
 vgpreload_core_@VGCONF_ARCH_SEC@_@VGCONF_OS@_so_CFLAGS = \
 	$(AM_CFLAGS_PSO_@VGCONF_PLATFORM_SEC_CAPS@)
 vgpreload_core_@VGCONF_ARCH_SEC@_@VGCONF_OS@_so_LDFLAGS = \
@@ -731,14 +809,30 @@ GDBSERVER_XML_FILES = \
 	m_gdbserver/mips64-linux-valgrind.xml \
 	m_gdbserver/mips64-fpu-valgrind-s1.xml \
 	m_gdbserver/mips64-fpu-valgrind-s2.xml \
-	m_gdbserver/mips64-fpu.xml
+	m_gdbserver/mips64-fpu.xml \
+	m_gdbserver/riscv64-cpu-valgrind-s1.xml \
+	m_gdbserver/riscv64-cpu-valgrind-s2.xml \
+	m_gdbserver/riscv64-cpu.xml \
+	m_gdbserver/riscv64-linux.xml \
+	m_gdbserver/riscv64-linux-valgrind.xml \
+	m_gdbserver/riscv64-fpu-valgrind-s1.xml \
+	m_gdbserver/riscv64-fpu-valgrind-s2.xml \
+	m_gdbserver/riscv64-fpu.xml
 
 # so as to make sure these get copied into the install tree
-vglibdir = $(pkglibdir)
+vglibdir = $(pkglibexecdir)
 vglib_DATA  = $(GDBSERVER_XML_FILES)
+
+if GDBSCRIPTS
+gdbscriptsdir = @VG_GDBSCRIPTS_DIR@
+gdbscripts_DATA  = m_gdbserver/valgrind-monitor.py
+gdbscripts_DATA += m_gdbserver/valgrind-monitor-def.py
+endif
 
 # so as to make sure these get copied into the tarball
 EXTRA_DIST  += $(GDBSERVER_XML_FILES)
+EXTRA_DIST  += m_gdbserver/valgrind-monitor.py
+EXTRA_DIST  += m_gdbserver/valgrind-monitor-def.py
 
 #----------------------------------------------------------------------------
 # General stuff

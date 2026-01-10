@@ -5,8 +5,9 @@
 #include <unistd.h>
 #include <sched.h>
 #include <signal.h>
-#include <linux/mman.h> // MREMAP_FIXED
+#include <sys/mman.h> // MREMAP_FIXED
 #include <sys/prctl.h>
+#include <sys/resource.h>
 
 // Here we are trying to trigger every syscall error (scalar errors and
 // memory errors) for every syscall.  We do this by passing a lot of bogus
@@ -31,6 +32,11 @@ int main(void)
    long* px  = malloc(sizeof(long));
    long  x0  = px[0];
    long  res;
+
+   int in_docker = 0;
+   if (access("/.dockerenv", F_OK) == 0) {
+      in_docker = 1;
+   }
 
    // All __NR_xxx numbers are taken from x86
 
@@ -95,9 +101,9 @@ int main(void)
    char *argv_envp[] = {(char *) (x0 + 1), NULL};
    GO(__NR_execve, "4s 2m");
    SY(__NR_execve, x0 + 1, x0 + argv_envp, x0); FAIL;
-
+   char *argv_ok[] = {"frob", NULL};
    GO(__NR_execve, "4s 2m");
-   SY(__NR_execve, x0 + 1, x0, x0 + argv_envp); FAIL;
+   SY(__NR_execve, x0 + 1, x0 + argv_ok, x0 + argv_envp); FAIL;
 
    // __NR_chdir 12
    GO(__NR_chdir, "1s 1m");
@@ -137,7 +143,7 @@ int main(void)
 
    // __NR_mount 21
    GO(__NR_mount, "5s 3m");
-   SY(__NR_mount, x0, x0, x0, x0, x0); FAIL;
+   SY(__NR_mount, x0, x0, x0-1, x0, x0); FAIL;
    
    // __NR_umount 22
    GO(__NR_umount, "1s 1m");
@@ -145,7 +151,7 @@ int main(void)
 
    // __NR_setuid 23
    GO(__NR_setuid, "1s 0m");
-   SY(__NR_setuid, x0); FAIL;
+   SY(__NR_setuid, x0-1); FAIL;
 
    // __NR_getuid 24
    GO(__NR_getuid, "0s 0m");
@@ -190,7 +196,12 @@ int main(void)
 
    // __NR_nice 34
    GO(__NR_nice, "1s 0m");
-   SY(__NR_nice, x0); SUCC;
+   SY(__NR_nice, x0);
+   if (in_docker) {
+      FAIL;
+   } else {
+      SUCC;
+   }
 
    // __NR_ftime 35
    GO(__NR_ftime, "ni");
@@ -238,7 +249,7 @@ int main(void)
 
    // __NR_setgid 46
    GO(__NR_setgid, "1s 0m");
-   SY(__NR_setgid, x0); FAIL;
+   SY(__NR_setgid, x0-1); FAIL;
 
    // __NR_getgid 47
    GO(__NR_getgid, "0s 0m");
@@ -258,7 +269,7 @@ int main(void)
 
    // __NR_acct 51
    GO(__NR_acct, "1s 1m");
-   SY(__NR_acct, x0); FAIL;
+   SY(__NR_acct, x0-1); FAIL;
 
    // __NR_umount2 52
    GO(__NR_umount2, "2s 1m");
@@ -269,7 +280,7 @@ int main(void)
    SY(__NR_lock); FAIL;
 
    // __NR_ioctl 54
-   #include <asm/ioctls.h>
+   #include <sys/ioctl.h>
    GO(__NR_ioctl, "3s 1m");
    SY(__NR_ioctl, x0, x0+TCSETS, x0); FAIL;
 
@@ -349,11 +360,11 @@ int main(void)
 
    // __NR_setreuid 70
    GO(__NR_setreuid, "2s 0m");
-   SY(__NR_setreuid, x0, x0); FAIL;
+   SY(__NR_setreuid, x0-1, x0-1); SUCC;
 
    // __NR_setregid 71
    GO(__NR_setregid, "2s 0m");
-   SY(__NR_setregid, x0, x0); FAIL;
+   SY(__NR_setregid, x0-1, x0-1); SUCC;
 
    // __NR_sigsuspend 72
    // XXX: how do you use this function?
@@ -456,7 +467,7 @@ int main(void)
 
    // __NR_fchown 95
    GO(__NR_fchown, "3s 0m");
-   SY(__NR_fchown, x0, x0, x0); FAIL;
+   SY(__NR_fchown, x0-1, x0, x0); FAIL;
 
    // __NR_getpriority 96
    GO(__NR_getpriority, "2s 0m");
@@ -742,7 +753,7 @@ int main(void)
 
    // __NR_setresuid 164
    GO(__NR_setresuid, "3s 0m");
-   SY(__NR_setresuid, x0, x0, x0); FAIL;
+   SY(__NR_setresuid, x0-1, x0-1, x0-1); SUCC;
 
    // __NR_getresuid 165
    GO(__NR_getresuid, "3s 3m");
@@ -766,7 +777,7 @@ int main(void)
 
    // __NR_setresgid 170
    GO(__NR_setresgid, "3s 0m");
-   SY(__NR_setresgid, x0, x0, x0); FAIL;
+   SY(__NR_setresgid, x0-1, x0-1, x0-1); SUCC;
 
    // __NR_getresgid 171
    GO(__NR_getresgid, "3s 3m");
@@ -923,11 +934,11 @@ int main(void)
 
    // __NR_setreuid32 203
    GO(__NR_setreuid32, "2s 0m");
-   SY(__NR_setreuid32, x0, x0); FAIL;
+   SY(__NR_setreuid32, x0-1, x0-1); SUCC;
 
    // __NR_setregid32 204
    GO(__NR_setregid32, "2s 0m");
-   SY(__NR_setregid32, x0, x0); FAIL;
+   SY(__NR_setregid32, x0-1, x0-1); SUCC;
 
    // __NR_getgroups32 205
    GO(__NR_getgroups32, "2s 1m");
@@ -939,11 +950,11 @@ int main(void)
 
    // __NR_fchown32 207
    GO(__NR_fchown32, "3s 0m");
-   SY(__NR_fchown32, x0, x0, x0); FAIL;
+   SY(__NR_fchown32, x0-1, x0, x0); FAIL;
 
    // __NR_setresuid32 208
    GO(__NR_setresuid32, "3s 0m");
-   SY(__NR_setresuid32, x0, x0, x0); FAIL;
+   SY(__NR_setresuid32, x0-1, x0-1, x0-1); SUCC;
 
    // __NR_getresuid32 209
    GO(__NR_getresuid32, "3s 3m");
@@ -951,7 +962,7 @@ int main(void)
 
    // __NR_setresgid32 210
    GO(__NR_setresgid32, "3s 0m");
-   SY(__NR_setresgid32, x0, x0, x0); FAIL;
+   SY(__NR_setresgid32, x0-1, x0-1, x0-1); SUCC;
 
    // __NR_getresgid32 211
    GO(__NR_getresgid32, "3s 3m");
@@ -963,11 +974,11 @@ int main(void)
 
    // __NR_setuid32 213
    GO(__NR_setuid32, "1s 0m");
-   SY(__NR_setuid32, x0); FAIL;
+   SY(__NR_setuid32, x0-1); FAIL;
 
    // __NR_setgid32 214
    GO(__NR_setgid32, "1s 0m");
-   SY(__NR_setgid32, x0); FAIL;
+   SY(__NR_setgid32, x0-1); FAIL;
 
    // __NR_setfsuid32 215
    GO(__NR_setfsuid32, "1s 0m");
@@ -1272,9 +1283,29 @@ int main(void)
    GO(__NR_sys_kexec_load, "ni");
    SY(__NR_sys_kexec_load); FAIL;
 
+   // __NR_waitid 284
+   GO(__NR_waitid, "5s 0m");
+   SY(__NR_waitid, x0, x0, x0, x0, x0); FAIL;
+
+   GO(__NR_waitid, "(infop,ru) 5s 2m");
+   SY(__NR_waitid, x0, x0, x0 + 1, x0, x0 + 2); FAIL;
+
    // __NR_epoll_create1 329
    GO(__NR_epoll_create1, "1s 0m");
    SY(__NR_epoll_create1, x0); SUCC_OR_FAIL;
+
+   // __NR_prlimit64 340
+   GO(__NR_prlimit64, "(nop) 4s 0m");
+   SY(__NR_prlimit64, x0, x0 + RLIMIT_NOFILE, x0, x0); SUCC;
+
+   GO(__NR_prlimit64, "(set) 4s 1m");
+   SY(__NR_prlimit64, x0, x0 + RLIMIT_NOFILE, x0 + 1, x0); FAILx(EFAULT);
+
+   GO(__NR_prlimit64, "(get) 4s 1m");
+   SY(__NR_prlimit64, x0, x0 + RLIMIT_NOFILE, x0, x0 + 1); FAILx(EFAULT);
+
+   GO(__NR_prlimit64, "(get+set) 4s 2m");
+   SY(__NR_prlimit64, x0, x0 + RLIMIT_NOFILE, x0 + 1, x0 + 1); FAILx(EFAULT);
 
    // __NR_process_vm_readv 347
    GO(__NR_process_vm_readv, "6s 2m");

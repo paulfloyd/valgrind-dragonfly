@@ -1,6 +1,6 @@
 <?xml version="1.0"?> <!-- -*- sgml -*- -->
-<!DOCTYPE chapter PUBLIC "-//OASIS//DTD DocBook XML V4.2//EN"
-  "http://www.oasis-open.org/docbook/xml/4.2/docbookx.dtd"
+<!DOCTYPE chapter PUBLIC "-//OASIS//DTD DocBook XML V4.5//EN"
+  "http://www.oasis-open.org/docbook/xml/4.5/docbookx.dtd"
 [ <!ENTITY % vg-entities SYSTEM "vg-entities.xml"> %vg-entities; ]>
 
 
@@ -81,6 +81,11 @@ To make it easier to write suppressions, you can use the
 <option>--gen-suppressions=yes</option> option.  This tells Valgrind to
 print out a suppression for each reported error, which you can then
 copy into a suppressions file.</para>
+
+<para>Valgrind will try to match the behaviour of applications
+compiled to run on the same OS and libraries that Valgrind was
+built with. If you use different libraries or a different
+OS version there may be some small differences in behaviour.</para>
 
 <para>Different error-checking tools report different kinds of errors.
 The suppression mechanism therefore allows you to say which tool or
@@ -419,6 +424,10 @@ existing suppressions file whilst reading the following documentation.
 The file <filename>glibc-2.3.supp</filename>, in the source
 distribution, provides some good examples.</para>
 
+<para>Blank and comment lines in a suppression file are ignored.  Comment lines
+  are made of 0 or more blanks followed by a # character followed by some
+  text.</para>
+
 <para>Each suppression has the following components:</para>
 
 <itemizedlist>
@@ -578,13 +587,38 @@ lines in a suppression.</para>
    fun:main
 }
 ]]></programlisting>
-This suppresses Memcheck memory-leak errors, in the case where
+<para>This suppresses Memcheck memory-leak errors, in the case where
 the allocation was done by <computeroutput>main</computeroutput>
 calling (though any number of intermediaries, including zero)
 <computeroutput>ccc</computeroutput>,
 calling onwards via
 <computeroutput>ddd</computeroutput> and eventually
-to <computeroutput>malloc.</computeroutput>.
+to <computeroutput>malloc.</computeroutput>.</para>
+</sect1>
+
+
+<sect1 id="manual-core.debuginfod"
+       xreflabel="Debuginfod">
+<title>Debuginfod</title>
+
+<para id="debuginfod.para.1">Valgrind supports the downloading of debuginfo
+files via debuginfod, an HTTP server for distributing ELF/DWARF debugging
+information. When a debuginfo file cannot be found locally, Valgrind is able
+to query debuginfod servers for the file using the file's build-id.</para>
+
+<para id="debuginfod.para.2">In order to use this feature
+<computeroutput>debuginfod-find</computeroutput> must be installed and the
+<computeroutput>$DEBUGINFOD_URLS</computeroutput> environment variable must
+contain space-separated URLs of debuginfod servers. Valgrind does not support
+<computeroutput>debuginfod-find</computeroutput> verbose output that is
+normally enabled with <computeroutput>$DEBUGINFOD_PROGRESS</computeroutput>
+and <computeroutput>$DEBUGINFOD_VERBOSE</computeroutput>. These environment
+variables will be ignored. This feature is supported on Linux only.</para>
+
+<para id="debuginfod.para.3">For more information regarding debuginfod, see
+<ulink url="https://sourceware.org/elfutils/Debuginfod.html">Elfutils Debuginfod</ulink>
+.</para>
+
 </sect1>
 
 
@@ -613,7 +647,7 @@ in most cases.  We group the available options by rough categories.</para>
     <listitem>
       <para>Run the Valgrind tool called <varname>toolname</varname>,
       e.g. memcheck, cachegrind, callgrind, helgrind, drd, massif,
-      lackey, none, exp-sgcheck, exp-bbv, exp-dhat, etc.</para>
+      dhat, lackey, none, exp-bbv, etc.</para>
     </listitem>
   </varlistentry>
 
@@ -819,13 +853,17 @@ in most cases.  We group the available options by rough categories.</para>
       for other events, specified in one of the following ways:  </para>
       <itemizedlist>
         <listitem><para>a comma separated list of one or more of
-            <option>startup exit valgrindabexit</option>.</para>
+            <option>startup exit abexit valgrindabexit</option>.</para>
 
           <para>The values <option>startup</option> <option>exit</option>
-          <option>valgrindabexit</option> respectively indicate to
-          invoke gdbserver before your program is executed, after the
-          last instruction of your program, on Valgrind abnormal exit
-          (e.g. internal error, out of memory, ...).</para>
+          <option>valgrindabexit</option> respectively indicate to invoke
+          gdbserver before your program is executed, after the last instruction
+          of your program, on Valgrind abnormal exit (e.g. internal error, out
+          of memory, ...).</para>
+
+          <para>The option <option>abexit</option> is similar to <option>exit</option>
+          but tells to invoke gdbserver only when your application exits abnormally
+          (i.e. with an exit code different of 0). </para>
 
           <para>Note: <option>startup</option> and
           <option>--vgdb-error=0</option> will both cause Valgrind
@@ -837,7 +875,7 @@ in most cases.  We group the available options by rough categories.</para>
         
         <listitem><para><option>all</option> to specify the complete set.
             It is equivalent to
-            <option>--vgdb-stop-at=startup,exit,valgrindabexit</option>.</para>
+            <option>--vgdb-stop-at=startup,exit,abexit,valgrindabexit</option>.</para>
         </listitem>
         
         <listitem><para><option>none</option> for the empty set.</para>
@@ -848,15 +886,44 @@ in most cases.  We group the available options by rough categories.</para>
 
   <varlistentry id="opt.track-fds" xreflabel="--track-fds">
     <term>
-      <option><![CDATA[--track-fds=<yes|no> [default: no] ]]></option>
+      <option><![CDATA[--track-fds=<yes|no|all|bad> [default: no] ]]></option>
     </term>
     <listitem>
-      <para>When enabled, Valgrind will print out a list of open file
-      descriptors on exit or on request, via the gdbserver monitor
-      command <varname>v.info open_fds</varname>.  Along with each
-      file descriptor is printed a stack backtrace of where the file
-      was opened and any details relating to the file descriptor such
-      as the file name or socket details.</para>
+      <para>When enabled, Valgrind will track all file descriptor
+      usage. It will produce errors for bad file descriptor usage like
+      closing a file descriptor twice, using a file descriptor
+      (number) that was never created, or passing an already closed
+      file descriptor to a system call. It will also print out a list
+      of open file descriptors on exit. Or on request, via the
+      gdbserver monitor command <varname>v.info open_fds</varname>.</para>
+
+      <para>When an error is generated, or when listing the still open
+      file descriptors at exit, a stack backtrace of where the file
+      was opened is printed. If the file descriptor has already been
+      closed, it will also include a backtrace of where it was
+      previously closed. Any error will include details relating to
+      the file descriptor such as the file name or socket details.</para>
+
+      <para>Use <option>all</option> to also include reporting
+      on <computeroutput>stdin</computeroutput>,
+      <computeroutput>stdout</computeroutput> and
+      <computeroutput>stderr</computeroutput> (or other inherited file
+      descriptors) at exit.  If <option>bad</option> option is used,
+      then exclude reporting on leaked file descriptors at exit and
+      only produce errors about bad file decriptors usage.</para>
+    </listitem>
+  </varlistentry>
+
+  <varlistentry id="opt.modify-fds" xreflabel="--modify-fds">
+    <term>
+      <option><![CDATA[--modify-fds=<no|yes|high> [default: no] ]]></option>
+    </term>
+    <listitem>
+      <para>When enabled, when the program opens a new file descriptor,
+      the highest available file descriptor is returned instead of the
+      lowest one. Use <option>yes</option> to restrict the feature from
+      the 0/1/2 file descriptors as they're often used for stdout/stderr
+      redirection.</para>
     </listitem>
   </varlistentry>
 
@@ -958,6 +1025,21 @@ in most cases.  We group the available options by rough categories.</para>
     </listitem>
   </varlistentry>
 
+  <varlistentry id="opt.enable-debuginfod" xreflabel="--enable-debuginfod">
+    <term>
+      <option><![CDATA[--enable-debuginfod=<no|yes> [default: yes] ]]></option>
+    </term>
+    <listitem>
+      <para>When enabled Valgrind will attempt to download missing debuginfo
+      from debuginfod servers if space-separated server URLs are present
+      in the <computeroutput>$DEBUGINFOD_URLS</computeroutput> environment
+      variable.  This option is supported on Linux only.
+      <!-- commented out because it causes broken links in the man page
+      For more information see <xref linkend="manual-core.debuginfod"/>.
+      --></para>
+    </listitem>
+  </varlistentry>
+
 </variablelist>
 <!-- end of xi:include in the manpage -->
 
@@ -995,8 +1077,8 @@ that can report errors, e.g. Memcheck, but not Cachegrind.</para>
 
       <para>This option is aimed at making life easier for tools that consume
       Valgrind's output as input, such as GUI front ends.  Currently this
-      option works with Memcheck, Helgrind, DRD and SGcheck.  The output
-      format is specified in the file
+      option works with Memcheck, Helgrind and DRD.  The output format is
+      specified in the file
       <computeroutput>docs/internals/xml-output-protocol4.txt</computeroutput>
       in the source tree for Valgrind 3.5.0 or later.</para>
 
@@ -1072,10 +1154,14 @@ that can report errors, e.g. Memcheck, but not Cachegrind.</para>
       <option><![CDATA[--demangle=<yes|no> [default: yes] ]]></option>
     </term>
     <listitem>
-      <para>Enable/disable automatic demangling (decoding) of C++ names.
+      <para>Enable/disable automatic demangling (decoding) of C++, D,
+      Rust, Java, Ada names.
       Enabled by default.  When enabled, Valgrind will attempt to
-      translate encoded C++ names back to something approaching the
-      original.  The demangler handles symbols mangled by g++ versions
+      translate encoded names in the listed languages back to something
+      approaching the original.
+      Note that the callgrind tool always disables Ada demangling in order
+      to differentiate overloaded functions and procedures in the callgraph.
+      The demangler handles symbols mangled by g++ versions
       2.X, 3.X and 4.X.</para>
 
       <para>An important fact about demangling is that function names
@@ -1192,7 +1278,11 @@ that can report errors, e.g. Memcheck, but not Cachegrind.</para>
       that value is returned instead, if Valgrind detects any errors.
       This is useful for using Valgrind as part of an automated test
       suite, since it makes it easy to detect test cases for which
-      Valgrind has reported errors, just by inspecting return codes.</para>
+      Valgrind has reported errors, just by inspecting return codes.
+      When set to a nonzero value and Valgrind detects no error,
+      the return value of Valgrind will be the return value of the
+      program being simulated.
+      </para>
     </listitem>
   </varlistentry>
 
@@ -1228,12 +1318,13 @@ that can report errors, e.g. Memcheck, but not Cachegrind.</para>
 
   <varlistentry id="opt.show-error-list" xreflabel="--show-error-list">
     <term>
-      <option><![CDATA[--show-error-list=no|yes [default: no]]]></option>
+      <option><![CDATA[--show-error-list=no|yes|all [default: no]]]></option>
     </term>
     <listitem>
-      <para>If this option is enabled, for tools that report errors, valgrind
+      <para>If this option is yes, for tools that report errors, valgrind
         will show the list of detected errors and the list of used suppressions
-        at exit.
+        at exit. The value all indicates to also show the list of suppressed
+        errors.
       </para>
       <para>Note that at verbosity 2 and above, valgrind automatically shows
         the list of detected errors and the list of used suppressions
@@ -1455,6 +1546,10 @@ that can report errors, e.g. Memcheck, but not Cachegrind.</para>
       you want to use it, you will have to recompile it by hand using
       the command shown at the top
       of <computeroutput>auxprogs/valgrind-di-server.c</computeroutput>.</para>
+
+      <para>Valgrind can also download debuginfo via debuginfod. See the
+      DEBUGINFOD section for more information.</para>
+
     </listitem>
   </varlistentry>
 
@@ -1563,9 +1658,9 @@ that can report errors, e.g. Memcheck, but not Cachegrind.</para>
     </term>
     <listitem>
       <para>This option is only relevant when running Valgrind on
-      Mac OS X.</para>
+      macOS.</para>
 
-      <para>Mac OS X uses a deferred debug information (debuginfo)
+      <para>macOS uses a deferred debug information (debuginfo)
       linking scheme.  When object files containing debuginfo are
       linked into a <computeroutput>.dylib</computeroutput> or an
       executable, the debuginfo is not copied into the final file.
@@ -1723,6 +1818,31 @@ that can report errors, e.g. Memcheck, but not Cachegrind.</para>
     </listitem>
   </varlistentry>
 
+    <varlistentry id="opt.realloc-zero-bytes-frees" xreflabel="--realloc-zero-bytes-frees">
+    <term>
+      <option><![CDATA[--realloc-zero-bytes-frees=yes|no [default: yes for glibc no otherwise] ]]></option>
+    </term>
+    <listitem>
+      <para>The behaviour of <computeroutput>realloc()</computeroutput> with a size
+      of zero is implementation defined in C17 and undefined in C23.
+      Valgrind tries to work in the same way as the
+      underlying system and C runtime library that it was configured and built on.
+      However, if you use a different C runtime library then this default may be wrong.
+      If the value is <option>yes</option> then <varname>realloc</varname> will
+      deallocate the memory and return NULL. If the value is <option>no</option> then
+      <varname>realloc</varname> will not deallocate the memory and
+      the size will be handled as though it were one byte.</para>
+      <para>As an example, if you use Valgrind installed via a package on a
+      Linux distro using GNU libc but link your test executable with musl libc or
+      the JEMalloc library then consider using
+      <computeroutput>--realloc-zero-bytes-frees=no</computeroutput>.
+      </para>
+      <para>Address Sanitizer has a similar and even wordier option
+      <computeroutput>allocator_frees_and_returns_null_on_realloc_zero</computeroutput>.
+      </para>
+    </listitem>
+  </varlistentry>
+
 </variablelist>
 <!-- end of xi:include in the manpage -->
 
@@ -1783,7 +1903,7 @@ Massif, Helgrind, DRD), the following options apply.</para>
       <para> Tools replacing Valgrind's <function>malloc,
       realloc,</function> etc, can optionally produce an execution
       tree detailing which piece of code is responsible for heap
-      memory usage. See <xref linkend="manual-core.xtree"/>
+      memory usage. See <xref linkend="&vg-xtree-id;"/>
       for a detailed explanation about execution trees. </para>
       
       <para> When set to <varname>none</varname>, no memory execution
@@ -1838,7 +1958,7 @@ Massif, Helgrind, DRD), the following options apply.</para>
         If the filename contains the extension  <option>.kcg</option>
         or no extension is provided or recognised,
         then the produced file format will be a callgrind output format.</para>
-      <para>See <xref linkend="manual-core.xtree"/>
+      <para>See <xref linkend="&vg-xtree-id;"/>
       for a detailed explanation about execution trees formats. </para>
     </listitem>
   </varlistentry>
@@ -1928,7 +2048,7 @@ need to use them.</para>
       startup and makes it use more memory (typically for each inlined
       piece of code, 6 words and space for the function name), but it
       results in more descriptive stacktraces.  Currently,
-      this functionality is enabled by default only for Linux,
+      this functionality is enabled by default only for Linux, FreeBSD,
       Android and Solaris targets and only for the tools Memcheck, Massif,
       Helgrind and DRD.  Here is an example of some stacktraces with
       <option>--read-inline-info=no</option>:
@@ -2058,7 +2178,8 @@ need to use them.</para>
       <option><![CDATA[--run-libc-freeres=<yes|no> [default: yes] ]]></option>
     </term>
     <listitem>
-      <para>This option is only relevant when running Valgrind on Linux.</para>
+      <para>This option is only relevant when running Valgrind on Linux with
+      GNU libc.</para>
 
       <para>The GNU C library (<function>libc.so</function>), which is
       used by all programs, may allocate memory for its own uses.
@@ -2092,8 +2213,8 @@ need to use them.</para>
       <option><![CDATA[--run-cxx-freeres=<yes|no> [default: yes] ]]></option>
     </term>
     <listitem>
-      <para>This option is only relevant when running Valgrind on Linux
-            or Solaris C++ programs.</para>
+      <para>This option is only relevant when running Valgrind on Linux,
+      FreeBSD or Solaris C++ programs using libstdc++.</para>
 
       <para>The GNU Standard C++ library (<function>libstdc++.so</function>),
       which is used by all C++ programs compiled with g++, may allocate memory
@@ -2166,7 +2287,7 @@ need to use them.</para>
         <listitem>
           <para><option>no-nptl-pthread-stackcache: </option>
             This hint is only relevant when running Valgrind on Linux;
-            it is ignored on Solaris and Mac OS X.</para>
+            it is ignored on FreeBSD, Solaris and macOS.</para>
 
           <para>The GNU glibc pthread library
             (<function>libpthread.so</function>), which is used by
@@ -2241,6 +2362,23 @@ need to use them.</para>
           </para>
         </listitem>
       </itemizedlist>
+    </listitem>
+  </varlistentry>
+
+  <varlistentry id="opt.scheduling-quantum" xreflabel="--scheduling-quantum">
+    <term>
+      <option><![CDATA[--scheduling-quantum=<number>   [default: 100000] ]]></option>
+    </term>
+    <listitem>
+      <para>The <option>--scheduling-quantum</option> option controls
+      the maximum number of basic blocks executed by a thread before releasing
+      the lock used by Valgrind to serialise thread execution.  Smaller values
+      give finer interleaving but increases the scheduling overhead. Finer
+      interleaving can be useful to reproduce race conditions with helgrind or
+      DRD.  For more details about the Valgrind thread serialisation scheme and
+      its impact on performance and thread scheduling, see
+      <xref linkend="&vg-pthreads-perf-sched-id;"/>.
+      </para>
     </listitem>
   </varlistentry>
 
@@ -2562,7 +2700,7 @@ need to use them.</para>
       malloc related functions, using the
       synonym <varname>somalloc</varname>.  This synonym is usable for
       all tools doing standard replacement of malloc related functions
-      (e.g. memcheck, massif, drd, helgrind, exp-dhat, exp-sgcheck).
+      (e.g. memcheck, helgrind, drd, massif, dhat).
       </para>
 
       <itemizedlist>
@@ -2594,13 +2732,6 @@ need to use them.</para>
           option <option>--soname-synonyms=somalloc=NONE</option>.
           Note that a NONE pattern will match the main executable and
           any shared library having no soname. </para>
-        </listitem>
-
-        <listitem>
-          <para>To run a "default" Firefox build for Linux, in which
-          JEMalloc is linked in to the main executable,
-          use <option>--soname-synonyms=somalloc=NONE</option>.
-          </para>
         </listitem>
 
 	<listitem>
@@ -2646,35 +2777,35 @@ PROGRESS: U 130s, W 134s, 97.0% CPU, EvC 574.90M, TIn 657.5k, TOut 3.0k, #thr 63
 ]]></programlisting>
         Each line shows:
       <itemizedlist>
-        <listitem><varname>U</varname>: total user time</listitem>
-        <listitem><varname>W</varname>: total wallclock time</listitem>
-        <listitem><varname>CPU</varname>: overall average cpu use</listitem>
-        <listitem><varname>EvC</varname>: number of event checks.  An event
+        <listitem><para><varname>U</varname>: total user time</para></listitem>
+        <listitem><para><varname>W</varname>: total wallclock time</para></listitem>
+        <listitem><para><varname>CPU</varname>: overall average cpu use</para></listitem>
+        <listitem><para><varname>EvC</varname>: number of event checks.  An event
          check is a backwards branch in the simulated program, so this is a
-         measure of forward progress of the program</listitem>
-        <listitem><varname>TIn</varname>: number of code blocks instrumented
-          by the JIT</listitem>
-        <listitem><varname>TOut</varname>: number of instrumented code
-          blocks that have been thrown away</listitem>
-        <listitem><varname>#thr</varname>: number of threads in the
-        program</listitem>
+         measure of forward progress of the program</para></listitem>
+        <listitem><para><varname>TIn</varname>: number of code blocks instrumented
+          by the JIT</para></listitem>
+        <listitem><para><varname>TOut</varname>: number of instrumented code
+          blocks that have been thrown away</para></listitem>
+        <listitem><para><varname>#thr</varname>: number of threads in the
+        program</para></listitem>
       </itemizedlist>
       From the progress of these, it is possible to observe:
       <itemizedlist>
-        <listitem>when the program is compute bound (<varname>TIn</varname>
-          rises slowly, <varname>EvC</varname> rises rapidly)</listitem>
-        <listitem>when the program is in a spinloop
+        <listitem><para>when the program is compute bound (<varname>TIn</varname>
+          rises slowly, <varname>EvC</varname> rises rapidly)</para></listitem>
+        <listitem><para>when the program is in a spinloop
           (<varname>TIn</varname>/<varname>TOut</varname>
-          fixed, <varname>EvC</varname> rises rapidly)</listitem>
-        <listitem>when the program is JIT-bound (<varname>TIn</varname>
-          rises rapidly)</listitem>
-        <listitem>when the program is rapidly discarding code
-          (<varname>TOut</varname> rises rapidly)</listitem>
-        <listitem>when the program is about to achieve some expected state
+          fixed, <varname>EvC</varname> rises rapidly)</para></listitem>
+        <listitem><para>when the program is JIT-bound (<varname>TIn</varname>
+          rises rapidly)</para></listitem>
+        <listitem><para>when the program is rapidly discarding code
+          (<varname>TOut</varname> rises rapidly)</para></listitem>
+        <listitem><para>when the program is about to achieve some expected state
           (<varname>EvC</varname> arrives at some value you
-          expect)</listitem>
-        <listitem> when the program is idling (<varname>U</varname> rises
-          more slowly than <varname>W</varname>)</listitem>
+          expect)</para></listitem>
+        <listitem><para> when the program is idling (<varname>U</varname> rises
+          more slowly than <varname>W</varname>)</para></listitem>
       </itemizedlist>
       </para>
    </listitem>
@@ -2756,6 +2887,74 @@ run.  Without the <computeroutput>memcheck:</computeroutput>
 part, this will cause problems if you select other tools that
 don't understand
 <option>--leak-check=yes</option>.</para>
+
+</sect2>
+
+<sect2 id="manual-core.dynopts" xreflabel="Dynamically Change Options">
+<title>Dynamically Changing Options</title>
+
+<para>The value of some command line options can be changed dynamically
+  while your program is running under Valgrind.</para>
+
+<para>The dynamically changeable options of the valgrind core and a given
+  tool can be listed using option
+  <computeroutput>--help-dyn-options</computeroutput>, for example:</para>
+<screen><![CDATA[
+$ valgrind --tool=memcheck --help-dyn-options
+  dynamically changeable options:
+    -v -q -d --stats --vgdb=no --vgdb=yes --vgdb=full --vgdb-poll --vgdb-error
+    --vgdb-stop-at --error-markers --show-error-list -s --show-below-main
+    --time-stamp --trace-children --child-silent-after-fork --trace-sched
+    --trace-signals --trace-symtab --trace-cfi --debug-dump=syms
+    --debug-dump=line --debug-dump=frames --trace-redir --trace-syscalls
+    --sym-offsets --progress-interval --merge-recursive-frames
+    --vex-iropt-verbosity --suppressions --trace-flags --trace-notbelow
+    --trace-notabove --profile-flags --gen-suppressions=no
+    --gen-suppressions=yes --gen-suppressions=all --errors-for-leak-kinds
+    --show-leak-kinds --leak-check-heuristics --show-reachable
+    --show-possibly-lost --freelist-vol --freelist-big-blocks --leak-check=no
+    --leak-check=summary --leak-check=yes --leak-check=full --ignore-ranges
+    --ignore-range-below-sp --show-mismatched-frees
+valgrind: Use --help for more information.
+$]]></screen>
+
+<para>The dynamic options can be changed the following ways:</para>
+
+  <orderedlist>
+   <listitem>
+     <para>From the shell, using vgdb and the monitor command
+     <computeroutput>v.clo</computeroutput>:</para>
+<screen><![CDATA[
+$ vgdb "v.clo --trace-children=yes --child-silent-after-fork=no"
+sending command v.clo --trace-children=yes --child-silent-after-fork=no to pid 4404
+$]]></screen>
+
+<para>Note: you must use double quotes around the monitor command to avoid
+  vgdb interpreting the valgrind options as its own options.</para>
+   </listitem>
+
+   <listitem>
+    <para>From gdb, using the monitor command
+     <computeroutput>v.clo</computeroutput>:</para>
+<screen><![CDATA[
+(gdb) monitor v.clo --trace-children=yes --child-silent-after-fork=no
+(gdb) ]]></screen>
+   </listitem>
+
+   <listitem>
+     <para>From your program, using the client request
+       <computeroutput>VALGRIND_CLO_CHANGE(option)</computeroutput>:</para>
+<screen><![CDATA[
+      VALGRIND_CLO_CHANGE ("--trace-children=yes");
+      VALGRIND_CLO_CHANGE ("--child-silent-after-fork=no");]]></screen>
+   </listitem>
+  </orderedlist>
+
+  <para>Dynamically changeable options can be used in various circumstances,
+    such as changing the valgrind behaviour during execution, loading
+    suppression files as part of shared library initialisation, change or
+    set valgrind options in child processes, ...
+  </para>
 
 </sect2>
 
@@ -2918,7 +3117,7 @@ will create a core dump in the usual way.</para>
 </sect1>
 
 
-<sect1 id="manual-core.xtree" xreflabel="Execution Trees">
+<sect1 id="&vg-xtree-id;" xreflabel="&vg-xtree-label;">
 <title>Execution Trees</title>
 
 <para>An execution tree (xtree) is made of a set of stack traces, each
@@ -2936,7 +3135,7 @@ will create a core dump in the usual way.</para>
   allocated indirectly via a call to function f1 and 140 bytes
   indirectly allocated via a call to function f2. f2 has allocated
   memory by calling g2, while f1 has allocated memory by calling g11
-  and g12. g11, g12 and g1 have directly called a memory allocation
+  and g12. g11, g12 and g2 have directly called a memory allocation
   function (malloc), and so have a non zero 'Self' value. Note that when
   kcachegrind shows an xtree, the 'Called' column and call nr indications in
   the Call Graph are not significant (always set to 0 or 1, independently
@@ -3006,7 +3205,7 @@ the "Massif Format".</para>
     <para>An xtree file in the Callgrind Format contains a single callgraph,
       associating each stack trace with the values recorded
       in the xtree. </para>
-    <para>Different Callgrind Format file visualisers are available:</para>
+    <para>Different Callgrind Format file visualizers are available:</para>
     <para>Valgrind distribution includes the <option>callgrind_annotate</option>
       command line utility that reads in the xtree data, and prints a sorted
       lists of functions, optionally with source annotation. Note that due to
@@ -3030,11 +3229,11 @@ the "Massif Format".</para>
       and <option>curBk</option>),
       while <option>--xtree-memory=full</option> will give a file
       with 6 detailed trees.</para>
-    <para>Different Massif Format file visualisers are available. Valgrind
+    <para>Different Massif Format file visualizers are available. Valgrind
       distribution includes the <option>ms_print</option>
       command line utility that produces an easy to read reprentation of
-      a massif output file. See <xref linkend="ms-manual.running-massif"/> and
-      <xref linkend="ms-manual.using"/> for more details
+      a massif output file. See <xref linkend="ms-manual.using-print"/> and
+      <xref linkend="ms-manual.using-visualizer"/> for more details
       about visualising Massif Format output files.</para>
     <para>Note that xtree Massif Format makes use of the inline
       information when specifying <option>--read-inline-info=yes</option>.
@@ -3046,7 +3245,7 @@ the "Massif Format".</para>
 <para>Note that for equivalent information, the Callgrind Format is more compact
   than the Massif Format.  However, the Callgrind Format always contains the
   full data: there is no filtering done during file production, filtering is
-  done by visualisers such as kcachegrind. kcachegrind is particularly easy to
+  done by visualizers such as kcachegrind. kcachegrind is particularly easy to
   use to analyse big xtree data containing multiple events counts or resources
   consumption.  The Massif Format (optionally) only contains a part of the data.
   For example, the Massif tool might filter some of the data, according to the
@@ -3150,7 +3349,7 @@ curB curBk totB totBk totFdB totFdBk
   not reflect the fact that the same memory was over and over allocated
   then released.</para>
 
-<para>Finally, Xtree visualisers such as kcachegrind are helping to
+<para>Finally, Xtree visualizers such as kcachegrind are helping to
   identify big memory consumers, in order to possibly optimise the
   amount of memory needed by your program.</para>
 

@@ -12,7 +12,7 @@
 
    This program is free software; you can redistribute it and/or
    modify it under the terms of the GNU General Public License as
-   published by the Free Software Foundation; either version 2 of the
+   published by the Free Software Foundation; either version 3 of the
    License, or (at your option) any later version.
 
    This program is distributed in the hope that it will be useful, but
@@ -21,9 +21,7 @@
    General Public License for more details.
 
    You should have received a copy of the GNU General Public License
-   along with this program; if not, write to the Free Software
-   Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
-   02111-1307, USA.
+   along with this program; if not, see <http://www.gnu.org/licenses/>.
 
    The GNU General Public License is contained in the file COPYING.
 */
@@ -337,12 +335,12 @@ extern Bool VG_(am_relocate_nooverlap_client)( /*OUT*/Bool* need_discard,
 #if defined(VGP_ppc32_linux) \
     || defined(VGP_ppc64be_linux) || defined(VGP_ppc64le_linux)	\
     || defined(VGP_mips32_linux) || defined(VGP_mips64_linux) \
-    || defined(VGP_arm64_linux)
+    || defined(VGP_arm64_linux) || defined(VGP_nanomips_linux)
 # define VG_STACK_GUARD_SZB  65536  // 1 or 16 pages
 #else
 # define VG_STACK_GUARD_SZB  8192   // 2 pages
 #endif
-# define VG_DEFAULT_STACK_ACTIVE_SZB 1048576 // (4096 * 256) = 1Mb 
+# define VG_DEFAULT_STACK_ACTIVE_SZB 1048576 // (4096 * 256) = 1Mb
 
 typedef struct _VgStack VgStack;
 
@@ -384,6 +382,11 @@ extern Bool VG_(get_changed_segments)(
 #if defined(VGO_solaris)
 extern Bool VG_(am_search_for_new_segment)(Addr *start, SizeT *size,
                                            UInt *prot);
+#endif
+
+#if defined(VGO_freebsd)
+/* For kern.usrstack syscall on FreeBSD */
+extern Word VG_(get_usrstack)(void);
 #endif
 
 #endif   // __PUB_CORE_ASPACEMGR_H

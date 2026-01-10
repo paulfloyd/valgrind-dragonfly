@@ -13,7 +13,7 @@
 
    This program is free software; you can redistribute it and/or
    modify it under the terms of the GNU General Public License as
-   published by the Free Software Foundation; either version 2 of the
+   published by the Free Software Foundation; either version 3 of the
    License, or (at your option) any later version.
 
    This program is distributed in the hope that it will be useful, but
@@ -22,9 +22,7 @@
    General Public License for more details.
 
    You should have received a copy of the GNU General Public License
-   along with this program; if not, write to the Free Software
-   Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
-   02111-1307, USA.
+   along with this program; if not, see <http://www.gnu.org/licenses/>.
 
    The GNU General Public License is contained in the file COPYING.
 */
@@ -53,16 +51,22 @@
 #include <string.h>
 #include <unistd.h>
 
+/* Provide own definitions for elf.h constants that might not be yet available
+   on some older systems. */
 #ifndef EM_X86_64
-#define EM_X86_64 62    // elf.h doesn't define this on some older systems
+#define EM_X86_64 62
 #endif
 
 #ifndef EM_AARCH64
-#define EM_AARCH64 183  // ditto
+#define EM_AARCH64 183
 #endif
 
 #ifndef EM_PPC64
-#define EM_PPC64 21  // ditto
+#define EM_PPC64 21
+#endif
+
+#ifndef EM_NANOMIPS
+#define EM_NANOMIPS 249
 #endif
 
 #ifndef E_MIPS_ABI_O32
@@ -71,6 +75,10 @@
 
 #ifndef E_MIPS_ABI2
 #define E_MIPS_ABI2    0x00000020
+#endif
+
+#ifndef EM_RISCV
+#define EM_RISCV 243
 #endif
 
 /* Report fatal errors */
@@ -91,7 +99,7 @@ static void barf ( const char *format, ... )
 }
 
 /* Search the path for the client program */
-static const char *find_client(const char *clientname)
+static char *find_client(const char *clientname)
 {
    char *fullname;
    const char *path = getenv("PATH");
@@ -99,7 +107,7 @@ static const char *find_client(const char *clientname)
 
    assert(clientname != NULL);
 
-   if (path == NULL) return clientname;
+   if (path == NULL) return strdup(clientname);
 
    /* Make the size of the FULLNAME buffer large enough. */
    unsigned need = strlen(path) + strlen("/") + strlen(clientname) + 1;
@@ -127,10 +135,12 @@ static const char *find_client(const char *clientname)
 
       if (access(fullname, R_OK|X_OK) == 0)
          return fullname;
+      else if (access(fullname, X_OK) == 0)
+	 barf("Need read permission on %s", fullname);
    }
    free(fullname);
 
-   return clientname;
+   return strdup(clientname);
 }
 
 /* Examine the client and work out which platform it is for */
@@ -144,28 +154,35 @@ static const char *select_platform(const char *clientname)
    } header;
    ssize_t n_bytes;
    const char *platform = NULL;
+   char *client;
 
    VG_(debugLog)(2, "launcher", "selecting platform for '%s'\n", clientname);
 
    if (strchr(clientname, '/') == NULL)
-      clientname = find_client(clientname);
+      client = find_client(clientname);
+   else
+      client = strdup(clientname);
 
-   VG_(debugLog)(2, "launcher", "selecting platform for '%s'\n", clientname);
+   if (strcmp (client, clientname) != 0)
+      VG_(debugLog)(2, "launcher", "selecting platform for '%s'\n", client);
 
-   if ((fd = open(clientname, O_RDONLY)) < 0)
+   if ((fd = open(client, O_RDONLY)) < 0) {
+     return_null:
+      free (client);
       return NULL;
+   }
    //   barf("open(%s): %s", clientname, strerror(errno));
 
-   VG_(debugLog)(2, "launcher", "opened '%s'\n", clientname);
+   VG_(debugLog)(2, "launcher", "opened '%s'\n", client);
 
    n_bytes = read(fd, header.c, sizeof(header));
    close(fd);
    if (n_bytes < 2) {
-      return NULL;
+      goto return_null;
    }
 
    VG_(debugLog)(2, "launcher", "read %ld bytes from '%s'\n",
-                    (long int)n_bytes, clientname);
+                    (long int)n_bytes, client);
 
    if (header.c[0] == '#' && header.c[1] == '!') {
       int i = 2;
@@ -243,6 +260,12 @@ static const char *select_platform(const char *clientname)
                  (header.ehdr32.e_flags & E_MIPS_ABI2)) {
                platform = "mips64-linux";
             }
+            else
+            if (header.ehdr32.e_machine == EM_NANOMIPS &&
+                (header.ehdr32.e_ident[EI_OSABI] == ELFOSABI_SYSV ||
+                 header.ehdr32.e_ident[EI_OSABI] == ELFOSABI_LINUX)) {
+               platform = "nanomips-linux";
+            }
          }
          else if (header.c[EI_DATA] == ELFDATA2MSB) {
             if (header.ehdr32.e_machine == EM_PPC &&
@@ -263,6 +286,12 @@ static const char *select_platform(const char *clientname)
                  header.ehdr32.e_ident[EI_OSABI] == ELFOSABI_LINUX) &&
                  (header.ehdr32.e_flags & E_MIPS_ABI2)) {
                platform = "mips64-linux";
+            }
+            else
+            if (header.ehdr32.e_machine == EM_NANOMIPS &&
+                (header.ehdr32.e_ident[EI_OSABI] == ELFOSABI_SYSV ||
+                 header.ehdr32.e_ident[EI_OSABI] == ELFOSABI_LINUX)) {
+               platform = "nanomips-linux";
             }
          }
 
@@ -293,6 +322,10 @@ static const char *select_platform(const char *clientname)
                 (header.ehdr64.e_ident[EI_OSABI] == ELFOSABI_SYSV ||
                  header.ehdr64.e_ident[EI_OSABI] == ELFOSABI_LINUX)) {
                platform = "ppc64le-linux";
+            } else if (header.ehdr64.e_machine == EM_RISCV &&
+                (header.ehdr64.e_ident[EI_OSABI] == ELFOSABI_SYSV ||
+                 header.ehdr64.e_ident[EI_OSABI] == ELFOSABI_LINUX)) {
+               platform = "riscv64-linux";
             }
          } else if (header.c[EI_DATA] == ELFDATA2MSB) {
 #           if !defined(VGPV_arm_linux_android) \
@@ -321,6 +354,8 @@ static const char *select_platform(const char *clientname)
 
    VG_(debugLog)(2, "launcher", "selected platform '%s'\n",
                  platform ? platform : "unknown");
+
+   free (client);
 
    return platform;
 }
@@ -379,8 +414,8 @@ int main(int argc, char** argv, char** envp)
       the executable (eg because it's a shell script).  VG_PLATFORM is the
       default_platform. Its value is defined in coregrind/Makefile.am and
       typically it is the primary build target. Unless the primary build
-      target is not built is not built in which case VG_PLATFORM is the
-      secondary build target. */
+      target is not built in which case VG_PLATFORM is the secondary build
+      target. */
 #  if defined(VGO_linux)
    if ((0==strcmp(VG_PLATFORM,"x86-linux"))    ||
        (0==strcmp(VG_PLATFORM,"amd64-linux"))  ||
@@ -391,7 +426,9 @@ int main(int argc, char** argv, char** envp)
        (0==strcmp(VG_PLATFORM,"arm64-linux"))  ||
        (0==strcmp(VG_PLATFORM,"s390x-linux"))  ||
        (0==strcmp(VG_PLATFORM,"mips32-linux")) ||
-       (0==strcmp(VG_PLATFORM,"mips64-linux")))
+       (0==strcmp(VG_PLATFORM,"mips64-linux")) ||
+       (0==strcmp(VG_PLATFORM,"nanomips-linux")) ||
+       (0==strcmp(VG_PLATFORM,"riscv64-linux")))
       default_platform = VG_PLATFORM;
 #  elif defined(VGO_solaris)
    if ((0==strcmp(VG_PLATFORM,"x86-solaris")) ||

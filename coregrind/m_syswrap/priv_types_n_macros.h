@@ -13,7 +13,7 @@
 
    This program is free software; you can redistribute it and/or
    modify it under the terms of the GNU General Public License as
-   published by the Free Software Foundation; either version 2 of the
+   published by the Free Software Foundation; either version 3 of the
    License, or (at your option) any later version.
 
    This program is distributed in the hope that it will be useful, but
@@ -22,9 +22,7 @@
    General Public License for more details.
 
    You should have received a copy of the GNU General Public License
-   along with this program; if not, write to the Free Software
-   Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
-   02111-1307, USA.
+   along with this program; if not, see <http://www.gnu.org/licenses/>.
 
    The GNU General Public License is contained in the file COPYING.
 */
@@ -52,10 +50,14 @@
 /* Arguments for a syscall. */
 typedef
    struct SyscallArgs {
-#if defined(VGO_dragonfly)
-      Word klass;
+      Word canonical_sysno;
+#if defined(VGO_freebsd) || defined(VGO_darwin)|| defined(VGO_dragonfly)
+      /*
+        * This may be the same as canonical_sysno (normal syscalls)
+       * Or it may be __NR_syscall or __NR___syscall
+       */
+      Word original_sysno;
 #endif
-      Word sysno;
       RegWord arg1;
       RegWord arg2;
       RegWord arg3;
@@ -94,9 +96,9 @@ typedef
       Int o_sysno;
 #     if defined(VGP_x86_linux) || defined(VGP_amd64_linux) \
          || defined(VGP_ppc32_linux) \
-         || defined(VGP_ppc64be_linux) || defined(VGP_ppc64le_linux) \
          || defined(VGP_arm_linux) || defined(VGP_s390x_linux) \
-         || defined(VGP_mips64_linux) || defined(VGP_arm64_linux)
+         || defined(VGP_arm64_linux) \
+         || defined(VGP_nanomips_linux) || defined(VGP_riscv64_linux)
       Int o_arg1;
       Int o_arg2;
       Int o_arg3;
@@ -105,7 +107,16 @@ typedef
       Int o_arg6;
       Int uu_arg7;
       Int uu_arg8;
-#     elif defined(VGP_x86_dragonfly)
+#     elif defined(VGP_ppc64be_linux) || defined(VGP_ppc64le_linux)
+      Int o_arg1;
+      Int o_arg2;
+      Int o_arg3;
+      Int o_arg4;
+      Int o_arg5;
+      Int o_arg6;
+      Int o_arg7;
+      Int uu_arg8;
+#     elif defined(VGP_x86_freebsd)|| defined(VGP_x86_dragonfly)
       Int s_arg1;
       Int s_arg2;
       Int s_arg3;
@@ -114,15 +125,31 @@ typedef
       Int s_arg6;
       Int s_arg7;
       Int s_arg8;
-#     elif defined(VGP_amd64_dragonfly)
+#     elif defined(VGP_amd64_freebsd) || defined(VGP_amd64_darwin)|| defined(VGP_amd64_dragonfly)
+      Int o_arg1;
+      Int o_arg2;
+      Int o_arg3;
+      Int o_arg4;
+      Int o_arg5;
+      // arg6 can either be a register or a stack
+      // depending on whether the syscall is 'syscall/__syscall'
+      // or any other syscall
+      union {
+         Int o_arg6;
+         Int s_arg6;
+      };
+      Int s_arg7;
+      Int s_arg8;
+      Bool arg6_is_reg;
+#     elif defined(VGP_arm64_freebsd)
       Int o_arg1;
       Int o_arg2;
       Int o_arg3;
       Int o_arg4;
       Int o_arg5;
       Int o_arg6;
-      Int s_arg7;
-      Int s_arg8;
+      Int o_arg7;
+      Int o_arg8;
 #     elif defined(VGP_mips32_linux)
       Int o_arg1;
       Int o_arg2;
@@ -141,7 +168,7 @@ typedef
       Int s_arg6;
       Int s_arg7;
       Int s_arg8;
-#     elif defined(VGP_amd64_darwin) || defined(VGP_amd64_solaris)
+#     elif defined(VGP_amd64_solaris)
       Int o_arg1;
       Int o_arg2;
       Int o_arg3;
@@ -150,6 +177,15 @@ typedef
       Int o_arg6;
       Int s_arg7;
       Int s_arg8;
+#     elif defined(VGP_mips64_linux)
+      Int o_arg1;
+      Int o_arg2;
+      Int o_arg3;
+      Int o_arg4;
+      Int o_arg5;
+      Int o_arg6;
+      Int o_arg7;
+      Int o_arg8;
 #     else
 #       error "Unknown platform"
 #     endif
@@ -157,11 +193,12 @@ typedef
    SyscallArgLayout;
 
 /* Flags describing syscall wrappers */
-#define SfMayBlock      (1 << 1) /* may block                         */
-#define SfPostOnFail    (1 << 2) /* call POST() function on failure   */
-#define SfPollAfter     (1 << 3) /* poll for signals on completion    */
-#define SfYieldAfter    (1 << 4) /* yield on completion               */
-#define SfNoWriteResult (1 << 5) /* don't write result to guest state */
+#define SfMayBlock      (1U << 1U) /* may block                         */
+#define SfPostOnFail    (1U << 2U) /* call POST() function on failure   */
+#define SfPollAfter     (1U << 3U) /* poll for signals on completion    */
+#define SfYieldAfter    (1U << 4U) /* yield on completion               */
+#define SfNoWriteResult (1U << 5U) /* don't write result to guest state */
+#define SfKernelRestart (1U << 6U) /* needs a manual restart            */
 
 
 /* ---------------------------------------------------------------------
@@ -206,17 +243,22 @@ typedef
 extern
 SyscallTableEntry* ML_(get_linux_syscall_entry)( UInt sysno );
 
-#elif defined(VGO_darwin) || defined(VGO_dragonfly)
-/* XXX: Darwin still uses the old scheme of exposing the table
-   array(s) and size(s) directly to syswrap-main.c.  This should be
-   fixed. */
+#elif defined(VGO_darwin)
 
-extern const SyscallTableEntry ML_(syscall_table)[];
-extern const UInt ML_(syscall_table_size);
+extern
+const SyscallTableEntry* ML_(get_darwin_syscall_entry)( UInt sysno );
 
 #elif defined(VGO_solaris)
 extern
 SyscallTableEntry* ML_(get_solaris_syscall_entry)( UInt sysno );
+
+#elif defined(VGO_freebsd)
+extern
+const SyscallTableEntry* ML_(get_freebsd_syscall_entry)( UInt sysno );
+
+#elif defined(VGO_dragonfly)
+extern
+const SyscallTableEntry* ML_(get_dragonfly_syscall_entry)( UInt sysno );
 
 #else
 #  error Unknown OS
@@ -296,10 +338,7 @@ SyscallTableEntry* ML_(get_solaris_syscall_entry)( UInt sysno );
     vgSysWrap_##auxstr##_##name##_after
 
 /* Add a generic wrapper to a syscall table. */
-#if defined(VGO_linux) || defined(VGO_solaris)
-#  define GENX_(sysno, name)  WRAPPER_ENTRY_X_(generic, sysno, name)
-#  define GENXY(sysno, name)  WRAPPER_ENTRY_XY(generic, sysno, name)
-#elif defined(VGO_dragonfly)
+#if defined(VGO_linux) || defined(VGO_solaris) || defined(VGO_freebsd)|| defined(VGO_dragonfly)
 #  define GENX_(sysno, name)  WRAPPER_ENTRY_X_(generic, sysno, name)
 #  define GENXY(sysno, name)  WRAPPER_ENTRY_XY(generic, sysno, name)
 #elif defined(VGO_darwin)
@@ -314,10 +353,21 @@ SyscallTableEntry* ML_(get_solaris_syscall_entry)( UInt sysno );
 #define LINX_(sysno, name)    WRAPPER_ENTRY_X_(linux, sysno, name) 
 #define LINXY(sysno, name)    WRAPPER_ENTRY_XY(linux, sysno, name)
 
+#if defined(VGO_freebsd)
+/* Add a FreeBSD-specific, arch-independent wrapper to a syscall
+   table. */
+#define BSDX_(sysno, name)    WRAPPER_ENTRY_X_(freebsd, sysno, name) 
+#define BSDXY(sysno, name)    WRAPPER_ENTRY_XY(freebsd, sysno, name)
+#endif
+
+// FIXME PJF I do not like this
+// each OS should have its own maco, Dragonfly should use DFLY
+#if defined(VGO_dragonfly)
 /* Add a Dragonfly-specific, arch-independent wrapper to a syscall
    table. */
 #define BSDX_(sysno, name)    WRAPPER_ENTRY_X_(dragonfly, sysno, name) 
 #define BSDXY(sysno, name)    WRAPPER_ENTRY_XY(dragonfly, sysno, name)
+#endif
 
 
 /* ---------------------------------------------------------------------
@@ -329,7 +379,7 @@ SyscallTableEntry* ML_(get_solaris_syscall_entry)( UInt sysno );
 
 /* Reference to the syscall's arguments -- the ones which the
    pre-wrapper may have modified, not the original copy. */
-#define SYSNO  (arrghs->sysno)
+#define SYSNO  (arrghs->canonical_sysno)
 #define ARG1   (arrghs->arg1)
 #define ARG2   (arrghs->arg2)
 #define ARG3   (arrghs->arg3)
@@ -338,6 +388,7 @@ SyscallTableEntry* ML_(get_solaris_syscall_entry)( UInt sysno );
 #define ARG6   (arrghs->arg6)
 #define ARG7   (arrghs->arg7)
 #define ARG8   (arrghs->arg8)
+#define RETVAL2 (arrghs->retval2)
 
 /* Provide signed versions of the argument values */
 #define SARG1  ((Word)ARG1)
@@ -364,7 +415,7 @@ static inline UWord getRES ( SyscallStatus* st ) {
    return sr_Res(st->sres);
 }
 
-#if defined(VGO_darwin) || defined(VGO_solaris) || defined(VGO_dragonfly)
+#if defined(VGO_darwin) || defined(VGO_solaris) || defined(VGO_freebsd)|| defined(VGO_dragonfly)
 static inline UWord getRESHI ( SyscallStatus* st ) {
    vg_assert(st->what == SsComplete);
    vg_assert(!sr_isError(st->sres));
@@ -384,6 +435,13 @@ static inline UWord getERR ( SyscallStatus* st ) {
    do { status->what = SsComplete;                   \
         status->sres = VG_(mk_SysRes_Success)(zzz);  \
    } while (0)
+
+#ifdef VGO_freebsd
+#define SET_STATUS_Success2(zzz, zzz2)               \
+   do { status->what = SsComplete;                   \
+        status->sres = VG_(mk_SysRes_amd64_freebsd)(zzz, zzz2, False);  \
+   } while (0)
+#endif
 
 #ifdef VGO_dragonfly
 #define SET_STATUS_Success2(zzz, zzz2)               \
@@ -444,7 +502,7 @@ static inline UWord getERR ( SyscallStatus* st ) {
 #  define PRA5(s,t,a) PRRAn(5,s,t,a)
 #  define PRA6(s,t,a) PRRAn(6,s,t,a)
 
-#elif defined(VGP_x86_dragonfly)
+#elif defined(VGP_x86_freebsd) || defined(VGP_x86_dragonfly)
    /* Up to 8 parameters, all on the stack. */
 #  define PRA1(s,t,a) PSRAn(1,s,t,a)
 #  define PRA2(s,t,a) PSRAn(2,s,t,a)
@@ -455,16 +513,34 @@ static inline UWord getERR ( SyscallStatus* st ) {
 #  define PRA7(s,t,a) PSRAn(7,s,t,a)
 #  define PRA8(s,t,a) PSRAn(8,s,t,a)
 
-#elif defined(VGP_amd64_dragonfly)
+#elif defined(VGP_amd64_freebsd) || defined(VGP_amd64_darwin) || defined(VGP_amd64_dragonfly)
    /* Up to 8 parameters, 6 in registers, 2 on the stack. */
+   /* or 7 in registers and 3 on the stack */
+#  define PRA1(s,t,a) PRRAn(1,s,t,a)
+#  define PRA2(s,t,a) PRRAn(2,s,t,a)
+#  define PRA3(s,t,a) PRRAn(3,s,t,a)
+#  define PRA4(s,t,a) PRRAn(4,s,t,a)
+#  define PRA5(s,t,a) PRRAn(5,s,t,a)
+#  define PRA6(s,t,a) \
+   do { \
+      if (layout->arg6_is_reg) \
+         PRRAn(6,s,t,a); \
+       else \
+         PSRAn(6,s,t,a); \
+   } while (0)
+#  define PRA7(s,t,a) PSRAn(7,s,t,a)
+#  define PRA8(s,t,a) PSRAn(8,s,t,a)
+
+#elif defined(VGP_arm64_freebsd)
+   /* Up to 7 parameters, all in registers. */
 #  define PRA1(s,t,a) PRRAn(1,s,t,a)
 #  define PRA2(s,t,a) PRRAn(2,s,t,a)
 #  define PRA3(s,t,a) PRRAn(3,s,t,a)
 #  define PRA4(s,t,a) PRRAn(4,s,t,a)
 #  define PRA5(s,t,a) PRRAn(5,s,t,a)
 #  define PRA6(s,t,a) PRRAn(6,s,t,a)
-#  define PRA7(s,t,a) PSRAn(7,s,t,a)
-#  define PRA8(s,t,a) PSRAn(8,s,t,a)
+#  define PRA7(s,t,a) PRRAn(7,s,t,a)
+#  define PRA8(s,t,a) PRRAn(8,s,t,a)
 
 #elif defined(VGP_x86_darwin) || defined(VGP_x86_solaris)
    /* Up to 8 parameters, all on the stack. */
@@ -477,7 +553,7 @@ static inline UWord getERR ( SyscallStatus* st ) {
 #  define PRA7(s,t,a) PSRAn(7,s,t,a)
 #  define PRA8(s,t,a) PSRAn(8,s,t,a)
 
-#elif defined(VGP_amd64_darwin) || defined(VGP_amd64_solaris)
+#elif defined(VGP_amd64_solaris)
    /* Up to 8 parameters, 6 in registers, 2 on the stack. */
 #  define PRA1(s,t,a) PRRAn(1,s,t,a)
 #  define PRA2(s,t,a) PRRAn(2,s,t,a)

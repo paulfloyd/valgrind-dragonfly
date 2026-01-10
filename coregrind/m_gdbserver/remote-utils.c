@@ -8,7 +8,7 @@
 
    This program is free software; you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
-   the Free Software Foundation; either version 2 of the License, or
+   the Free Software Foundation; either version 3 of the License, or
    (at your option) any later version.
 
    This program is distributed in the hope that it will be useful,
@@ -27,6 +27,7 @@
 #include "pub_core_libcsignal.h"
 #include "pub_core_options.h"
 #include "pub_core_aspacemgr.h"
+#include "pub_core_syswrap.h"
 
 #include "server.h"
 
@@ -322,7 +323,11 @@ void remote_open (const HChar *name)
        (Addr) VG_(threads), VG_N_THREADS, sizeof(ThreadState), 
        offsetof(ThreadState, status),
        offsetof(ThreadState, os_state) + offsetof(ThreadOSstate, lwpid),
-       0};
+       0
+#if VEX_HOST_WORDSIZE == 8
+         , 0
+#endif
+   };
 
    user = VG_(getenv)("LOGNAME");
    if (user == NULL) user = VG_(getenv)("USER");
@@ -367,8 +372,9 @@ void remote_open (const HChar *name)
                 pid);
    }
    if (VG_(clo_verbosity) > 1 
-       || VG_(clo_vgdb_error) < 999999999
-       || VG_(clo_vgdb_stop_at) != 0) {
+       || ((VG_(clo_vgdb_error) < 999999999
+            || VG_(clo_vgdb_stop_at) != 0)
+           && !(VG_(clo_launched_with_multi)))) {
       VG_(umsg)("\n");
       VG_(umsg)(
          "TO DEBUG THIS PROCESS USING GDB: start GDB like this\n"
@@ -519,12 +525,30 @@ void remote_close (void)
         from_gdb ? from_gdb : "NULL",
         to_gdb ? to_gdb : "NULL",
         shared_mem ? shared_mem : "NULL");
-   if (pid == pid_from_to_creator && from_gdb && VG_(unlink) (from_gdb) == -1)
-      warning ("could not unlink %s\n", from_gdb);
-   if (pid == pid_from_to_creator && to_gdb && VG_(unlink) (to_gdb) == -1)
-      warning ("could not unlink %s\n", to_gdb);
-   if (pid == pid_from_to_creator && shared_mem && VG_(unlink) (shared_mem) == -1)
-      warning ("could not unlink %s\n", shared_mem);
+
+   // PJF this is not ideal
+   // if the guest enters capability mode then the unlink calls will fail
+   // this may well also apply to Linux and seccomp
+   // I don't have any thoughts on how to fix it, other than forking early on
+   // having the child run the guest and the parent wait()ing and then
+   // the parent doing the cleanup
+
+   Bool unlinkPossible = True;
+#if defined(VGO_freebsd)
+   unlinkPossible = (VG_(get_capability_mode)() == False);
+#endif
+
+   if (unlinkPossible == True) {
+      if (pid == pid_from_to_creator && from_gdb && VG_(unlink) (from_gdb) == -1)
+         warning ("could not unlink %s\n", from_gdb);
+      if (pid == pid_from_to_creator && to_gdb && VG_(unlink) (to_gdb) == -1)
+         warning ("could not unlink %s\n", to_gdb);
+      if (pid == pid_from_to_creator && shared_mem && VG_(unlink) (shared_mem) == -1)
+         warning ("could not unlink %s\n", shared_mem);
+   } else {
+       VG_(debugLog)(1, "remote close",
+                        "cannot unlink gdb pipes\n");
+   }
    free (from_gdb);
    from_gdb = NULL;
    free (to_gdb);
@@ -636,36 +660,9 @@ void decode_address (CORE_ADDR *addrp, const char *start, int len)
    *addrp = addr;
 }
 
-/* Convert number NIB to a hex digit.  */
-
-static
-int tohex (int nib)
-{
-   if (nib < 10)
-      return '0' + nib;
-   else
-      return 'a' + nib - 10;
-}
-
-int hexify (char *hex, const char *bin, int count)
-{
-   int i;
-
-   /* May use a length, or a nul-terminated string as input. */
-   if (count == 0)
-      count = strlen (bin);
-
-  for (i = 0; i < count; i++) {
-     *hex++ = tohex ((*bin >> 4) & 0xf);
-     *hex++ = tohex (*bin++ & 0xf);
-  }
-  *hex = 0;
-  return i;
-}
-
 /* builds an image of bin according to byte order of the architecture 
    Useful for register and int image */
-char* heximage (char *buf, char *bin, int count)
+char* heximage (char *buf, const char *bin, int count)
 {
 #if (VKI_LITTLE_ENDIAN)
    char rev[count]; 
@@ -1140,7 +1137,7 @@ void prepare_resume_reply (char *buf, char status, unsigned char sig)
          CORE_ADDR addr;
          int i;
 
-         strncpy (buf, "watch:", 6);
+         memcpy (buf, "watch:", 6);
          buf += 6;
 
          addr = valgrind_stopped_data_address ();
@@ -1158,7 +1155,7 @@ void prepare_resume_reply (char *buf, char status, unsigned char sig)
          VG_(sprintf) (buf, "%s:%x;",
                        valgrind_stopped_before_syscall ()
                        ? "syscall_entry" : "syscall_return",
-                       valgrind_stopped_by_syscall ());
+                       (UInt)valgrind_stopped_by_syscall ());
          buf += strlen (buf);
       }
 

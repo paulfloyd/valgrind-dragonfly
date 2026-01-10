@@ -11,10 +11,12 @@
 
    Copyright (C) 2000-2017 Julian Seward 
       jseward@acm.org
+   Copyright (C) 2025 Mark J. Wielaard
+      mark@klomp.org
 
    This program is free software; you can redistribute it and/or
    modify it under the terms of the GNU General Public License as
-   published by the Free Software Foundation; either version 2 of the
+   published by the Free Software Foundation; either version 3 of the
    License, or (at your option) any later version.
 
    This program is distributed in the hope that it will be useful, but
@@ -23,9 +25,7 @@
    General Public License for more details.
 
    You should have received a copy of the GNU General Public License
-   along with this program; if not, write to the Free Software
-   Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
-   02111-1307, USA.
+   along with this program; if not, see <http://www.gnu.org/licenses/>.
 
    The GNU General Public License is contained in the file COPYING.
 */
@@ -69,19 +69,12 @@ void ML_(symerr) ( const DebugInfo* di, Bool serious, const HChar* msg )
       return;
 
    if (serious) {
-
-      VG_(message)(Vg_DebugMsg, "WARNING: Serious error when "
-                                "reading debug info\n");
-      if (True || VG_(clo_verbosity) < 2) {
-         /* Need to show what the file name is, at verbosity levels 2
-            or below, since that won't already have been shown */
          VG_(message)(Vg_DebugMsg, 
-                      "When reading debug info from %s:\n",
-                      (di && di->fsm.filename) ? di->fsm.filename
-                                               : "???");
-      }
+                   "WARNING: Serious problem when reading debug info from %s:\n",
+                   (di && di->fsm.filename) ? di->fsm.filename : "???");
+      VG_(message)(Vg_DebugMsg,
+                   "WARNING: Valgrind will continue to execute but error messages may be degraded.\n");
       VG_(message)(Vg_DebugMsg, "%s\n", msg);
-
    } else { /* !serious */
 
       if (VG_(clo_verbosity) >= 2)
@@ -138,6 +131,30 @@ void ML_(ppDiCfSI) ( const XArray* /* of CfiExpr */ exprs,
             VG_(printf)("{");                    \
             ML_(ppCfiExpr)(exprs, _off);         \
             VG_(printf)("}");                    \
+         } else                                  \
+         if (_how == CFIR_S390X_F0) {            \
+            VG_(printf)("oldF0");                \
+         } else                                  \
+         if (_how == CFIR_S390X_F1) {            \
+            VG_(printf)("oldF1");                \
+         } else                                  \
+         if (_how == CFIR_S390X_F2) {            \
+            VG_(printf)("oldF2");                \
+         } else                                  \
+         if (_how == CFIR_S390X_F3) {            \
+            VG_(printf)("oldF3");                \
+         } else                                  \
+         if (_how == CFIR_S390X_F4) {            \
+            VG_(printf)("oldF4");                \
+         } else                                  \
+         if (_how == CFIR_S390X_F5) {            \
+            VG_(printf)("oldF5");                \
+         } else                                  \
+         if (_how == CFIR_S390X_F6) {            \
+            VG_(printf)("oldF6");                \
+         } else                                  \
+         if (_how == CFIR_S390X_F7) {            \
+            VG_(printf)("oldF7");                \
          } else {                                \
             vg_assert(0+0);                      \
          }                                       \
@@ -204,7 +221,29 @@ void ML_(ppDiCfSI) ( const XArray* /* of CfiExpr */ exprs,
    VG_(printf)(" R7=");
    SHOW_HOW(si_m->r7_how, si_m->r7_off);
 #  elif defined(VGA_ppc32) || defined(VGA_ppc64be) || defined(VGA_ppc64le)
-#  elif defined(VGA_s390x) || defined(VGA_mips32) || defined(VGA_mips64)
+   /* nothing */
+#  elif defined(VGA_s390x)
+   VG_(printf)(" SP=");
+   SHOW_HOW(si_m->sp_how, si_m->sp_off);
+   VG_(printf)(" FP=");
+   SHOW_HOW(si_m->fp_how, si_m->fp_off);
+   VG_(printf)(" F0=");
+   SHOW_HOW(si_m->f0_how, si_m->f0_off);
+   VG_(printf)(" F1=");
+   SHOW_HOW(si_m->f1_how, si_m->f1_off);
+   VG_(printf)(" F2=");
+   SHOW_HOW(si_m->f2_how, si_m->f2_off);
+   VG_(printf)(" F3=");
+   SHOW_HOW(si_m->f3_how, si_m->f3_off);
+   VG_(printf)(" F4=");
+   SHOW_HOW(si_m->f4_how, si_m->f4_off);
+   VG_(printf)(" F5=");
+   SHOW_HOW(si_m->f5_how, si_m->f5_off);
+   VG_(printf)(" F6=");
+   SHOW_HOW(si_m->f6_how, si_m->f6_off);
+   VG_(printf)(" F7=");
+   SHOW_HOW(si_m->f7_how, si_m->f7_off);
+#  elif defined(VGA_mips32) || defined(VGA_mips64) || defined(VGA_nanomips)
    VG_(printf)(" SP=");
    SHOW_HOW(si_m->sp_how, si_m->sp_off);
    VG_(printf)(" FP=");
@@ -216,6 +255,11 @@ void ML_(ppDiCfSI) ( const XArray* /* of CfiExpr */ exprs,
    SHOW_HOW(si_m->x30_how, si_m->x30_off);
    VG_(printf)(" X29=");
    SHOW_HOW(si_m->x29_how, si_m->x29_off);
+#  elif defined(VGA_riscv64)
+   VG_(printf)(" SP=");
+   SHOW_HOW(si_m->sp_how, si_m->sp_off);
+   VG_(printf)(" FP=");
+   SHOW_HOW(si_m->fp_how, si_m->fp_off);
 #  else
 #    error "Unknown arch"
 #  endif
@@ -320,11 +364,6 @@ void ML_(addSym) ( struct _DebugInfo* di, DiSym* sym )
 
    vg_assert(sym->pri_name != NULL);
    vg_assert(sym->sec_names == NULL);
-
-#if defined(VGO_dragonfly)
-   if (sym->size == 0)
-      sym->size = 1;
-#endif
 
    /* Ignore zero-sized syms. */
    if (sym->size == 0) return;
@@ -488,15 +527,19 @@ static void shrinkLocTab ( struct _DebugInfo* di )
    di->loctab_size = new_sz;
 }
 
-#define COMPLAIN_ONCE(what, limit, limit_op)                   \
+// Complain once, unless VG_(debugLog_getLevel)() > 3
+// showinfo is called if VG_(debugLog_getLevel)() >= 1
+#define COMPLAIN_ONCE(what, limit, limit_op, showinfo)         \
    {                                                           \
    static Bool complained = False;                             \
    if (!complained) {                                          \
-      complained = True;                                       \
+      complained = VG_(debugLog_getLevel)() <= 3;              \
       VG_(message)(Vg_UserMsg,                                 \
                    "warning: Can't handle " what " with "      \
                    "line number %d " limit_op " than %d\n",    \
                    lineno, limit);                             \
+      if (VG_(debugLog_getLevel)() >= 1) showinfo;             \
+      if (complained)                                          \
       VG_(message)(Vg_UserMsg,                                 \
                    "(Nb: this message is only shown once)\n"); \
    } \
@@ -516,6 +559,11 @@ void ML_(addLineInfo) ( struct _DebugInfo* di,
    static const Bool debug = False;
    DiLoc loc;
    UWord size = next - this;
+
+#  define SHOWLINEINFO                                                  \
+   VG_(message)(Vg_DebugMsg,                                            \
+                "addLoc: addr %#lx, size %lu, line %d, fndn_ix %u\n",   \
+                this,size,lineno,fndn_ix)
 
    /* Ignore zero-sized locs */
    if (this == next) return;
@@ -563,7 +611,7 @@ void ML_(addLineInfo) ( struct _DebugInfo* di,
    /* Rule out ones which are completely outside the r-x mapped area.
       See "Comment_Regarding_Text_Range_Checks" elsewhere in this file
       for background and rationale. */
-   vg_assert(di->fsm.have_rx_map && di->fsm.have_rw_map);
+   vg_assert(di->fsm.have_rx_map);
    if (ML_(find_rx_mapping)(di, this, this + size - 1) == NULL) {
        if (0)
           VG_(message)(Vg_DebugMsg, 
@@ -576,11 +624,14 @@ void ML_(addLineInfo) ( struct _DebugInfo* di,
    }
 
    if (lineno < 0) {
-      COMPLAIN_ONCE("line info entry", 0, "smaller");
+      COMPLAIN_ONCE("line info entry", 0, "smaller", SHOWLINEINFO);
       return;
    }
    if (lineno > MAX_LINENO) {
-      COMPLAIN_ONCE("line info entry", MAX_LINENO, "greater");
+      /* With --enable-lto, gcc 9 creates huge line numbers e.g. in the tool
+         => only complain with some debug level. */
+      if (VG_(debugLog_getLevel)() >= 1)
+         COMPLAIN_ONCE("line info entry", MAX_LINENO, "greater", SHOWLINEINFO);
       return;
    }
 
@@ -588,11 +639,10 @@ void ML_(addLineInfo) ( struct _DebugInfo* di,
    loc.size      = (UShort)size;
    loc.lineno    = lineno;
 
-   if (0) VG_(message)(Vg_DebugMsg, 
-		       "addLoc: addr %#lx, size %lu, line %d, fndn_ix %u\n",
-		       this,size,lineno,fndn_ix);
+   if (0) SHOWLINEINFO;
 
    addLoc ( di, &loc, fndn_ix );
+#  undef SHOWLINEINFO
 }
 
 /* Add an inlined call info to the inlined call table. 
@@ -642,11 +692,18 @@ static void shrinkInlTab ( struct _DebugInfo* di )
 /* Top-level place to call to add a addr-to-inlined fn info. */
 void ML_(addInlInfo) ( struct _DebugInfo* di, 
                        Addr addr_lo, Addr addr_hi,
-                       const HChar* inlinedfn,
+                       UWord subprog,
                        UInt fndn_ix,
                        Int lineno, UShort level)
 {
    DiInlLoc inl;
+
+#  define SHOWLINEINFO                                                  \
+   VG_(message) (Vg_DebugMsg,                                           \
+                 "addInlInfo: fn %lx inlined as addr_lo %#lx,addr_hi %#lx," \
+                 "caller fndn_ix %u %s:%d\n",                           \
+                 subprog, addr_lo, addr_hi, fndn_ix,                  \
+                 ML_(fndn_ix2filename) (di, fndn_ix), lineno)
 
    /* Similar paranoia as in ML_(addLineInfo). Unclear if needed. */
    if (addr_lo >= addr_hi) {
@@ -654,43 +711,67 @@ void ML_(addInlInfo) ( struct _DebugInfo* di,
            VG_(message)(Vg_DebugMsg, 
                         "warning: inlined info addresses out of order "
                         "at: 0x%lx 0x%lx\n", addr_lo, addr_hi);
+           SHOWLINEINFO;
        }
        addr_hi = addr_lo + 1;
    }
 
    if (lineno < 0) {
-      COMPLAIN_ONCE ("inlined call info entry", 0, "smaller");
+      COMPLAIN_ONCE ("inlined call info entry", 0, "smaller", SHOWLINEINFO);
       return;
    }
    if (lineno > MAX_LINENO) {
-      COMPLAIN_ONCE ("inlined call info entry", MAX_LINENO, "greater");
+      /* With --enable-lto, gcc 9 creates huge line numbers e.g. in the tool
+         => only complain with some debug level. */
+      if (VG_(debugLog_getLevel)() >= 1)
+         COMPLAIN_ONCE ("inlined call info entry", MAX_LINENO, "greater",
+                        SHOWLINEINFO);
       return;
    }
 
    // code resulting from inlining of inlinedfn:
    inl.addr_lo   = addr_lo;
    inl.addr_hi   = addr_hi;
-   inl.inlinedfn = inlinedfn;
+   inl.inlined.subprog = subprog;
    // caller:
    inl.fndn_ix   = fndn_ix;
    inl.lineno    = lineno;
    inl.level     = level;
 
-   if (0) VG_(message)
-             (Vg_DebugMsg, 
-              "addInlInfo: fn %s inlined as addr_lo %#lx,addr_hi %#lx,"
-              "caller fndn_ix %u %s:%d\n",
-              inlinedfn, addr_lo, addr_hi, fndn_ix,
-              ML_(fndn_ix2filename) (di, fndn_ix), lineno);
+   if (0) SHOWLINEINFO;
 
    addInl ( di, &inl );
+#  undef SHOWLINEINFO
+}
+
+void ML_(addSubprogram) ( struct _DebugInfo* di, DiSubprogram* sub )
+{
+   UInt          new_sz, i;
+   DiSubprogram* new_tab;
+
+   if (di->subtab_used == di->subtab_size) {
+      new_sz = 2 * di->subtab_size;
+      if (new_sz == 0) new_sz = 2560;
+      new_tab = ML_(dinfo_zalloc)( "di.storage.addSubprogram.1",
+                                   new_sz * sizeof(DiSubprogram) );
+      if (di->subtab != NULL) {
+         for (i = 0; i < di->subtab_used; i++)
+            new_tab[i] = di->subtab[i];
+         ML_(dinfo_free)(di->subtab);
+      }
+      di->subtab = new_tab;
+      di->subtab_size = new_sz;
+   }
+
+   di->subtab[di->subtab_used] = *sub;
+   di->subtab_used++;
 }
 
 DiCfSI_m* ML_(get_cfsi_m) (const DebugInfo* di, UInt pos)
 {
    UInt cfsi_m_ix;
 
-   vg_assert(pos >= 0 && pos < di->cfsi_used);
+   vg_assert(pos < di->cfsi_used);
    switch (di->sizeof_cfsi_m_ix) {
       case 1: cfsi_m_ix = ((UChar*)  di->cfsi_m_ix)[pos]; break;
       case 2: cfsi_m_ix = ((UShort*) di->cfsi_m_ix)[pos]; break;
@@ -735,7 +816,7 @@ void ML_(addDiCfSI) ( struct _DebugInfo* di,
                    "warning: DiCfSI %#lx .. %#lx is huge; length = %u (%s)\n",
                    base, base + len - 1, len, di->soname);
 
-   vg_assert(di->fsm.have_rx_map && di->fsm.have_rw_map);
+   vg_assert(di->fsm.have_rx_map);
    /* Find mapping where at least one end of the CFSI falls into. */
    map  = ML_(find_rx_mapping)(di, base, base);
    map2 = ML_(find_rx_mapping)(di, base + len - 1,
@@ -944,7 +1025,9 @@ static void ppCfiReg ( CfiReg reg )
       case Creg_ARM_R15:   VG_(printf)("R15"); break;
       case Creg_ARM_R14:   VG_(printf)("R14"); break;
       case Creg_ARM_R7:    VG_(printf)("R7");  break;
+      case Creg_ARM64_SP:  VG_(printf)("SP"); break;
       case Creg_ARM64_X30: VG_(printf)("X30"); break;
+      case Creg_ARM64_X29: VG_(printf)("X29"); break;
       case Creg_MIPS_RA:   VG_(printf)("RA"); break;
       case Creg_S390_IA:   VG_(printf)("IA"); break;
       case Creg_S390_SP:   VG_(printf)("SP"); break;
@@ -1237,11 +1320,10 @@ void ML_(addVar)( struct _DebugInfo* di,
       that those extra sections have the same bias as .text, but that
       seems a reasonable assumption to me. */
    /* This is assured us by top level steering logic in debuginfo.c,
-      and it is re-checked at the start of
-      ML_(read_elf_debug_info). */
-   vg_assert(di->fsm.have_rx_map && di->fsm.have_rw_map);
+      and it is re-checked at the start of ML_(read_elf_object). */
+   vg_assert(di->fsm.have_rx_map);
    if (level > 0 && ML_(find_rx_mapping)(di, aMin, aMax) == NULL) {
-      if (VG_(clo_verbosity) >= 0) {
+      if (VG_(clo_verbosity) > 1) {
          VG_(message)(Vg_DebugMsg, 
             "warning: addVar: in range %#lx .. %#lx outside "
             "all rx mapped areas (%s)\n",
@@ -1474,7 +1556,7 @@ Bool preferName ( const DebugInfo* di,
    vlena = VG_(strlen)(a_name);
    vlenb = VG_(strlen)(b_name);
 
-#  if defined(VGO_linux) || defined(VGO_solaris) || defined(VGO_dragonfly)
+#  if defined(VGO_linux) || defined(VGO_solaris) || defined(VGO_freebsd)|| defined(VGO_dragonfly)
 #    define VERSION_CHAR '@'
 #  elif defined(VGO_darwin)
 #    define VERSION_CHAR '$'
@@ -1665,7 +1747,6 @@ static void canonicaliseSymtab ( struct _DebugInfo* di )
    for (i = 0; i < di->symtab_used; i++) {
       DiSym* sym = &di->symtab[i];
       vg_assert(sym->pri_name);
-      vg_assert(!sym->sec_names);
    }
 
    /* Sort by address. */
@@ -2008,7 +2089,6 @@ static void canonicaliseLoctab ( struct _DebugInfo* di )
    sort_loctab_and_loctab_fndn_ix (di);
 
    for (i = 0; i < ((Word)di->loctab_used)-1; i++) {
-      vg_assert(di->loctab[i].size < 10000);
       /* If two adjacent entries overlap, truncate the first. */
       if (di->loctab[i].addr + di->loctab[i].size > di->loctab[i+1].addr) {
          /* Do this in signed int32 because the actual .size fields
@@ -2323,6 +2403,9 @@ void ML_(finish_CFSI_arrays) ( struct _DebugInfo* di )
    vg_assert (f_holes == n_holes);
    vg_assert (pos == new_used);
 
+   if (di->deferred)
+      return;
+
    di->cfsi_used = new_used;
    di->cfsi_size = new_used;
    ML_(dinfo_free) (di->cfsi_rd);
@@ -2338,9 +2421,13 @@ void ML_(canonicaliseTables) ( struct _DebugInfo* di )
    canonicaliseLoctab ( di );
    canonicaliseInltab ( di );
    ML_(canonicaliseCFI) ( di );
+   canonicaliseVarInfo ( di );
+
+   if (di->deferred)
+      return;
+
    if (di->cfsi_m_pool)
       VG_(freezeDedupPA) (di->cfsi_m_pool, ML_(dinfo_shrink_block));
-   canonicaliseVarInfo ( di );
    if (di->strpool)
       VG_(freezeDedupPA) (di->strpool, ML_(dinfo_shrink_block));
    if (di->fndnpool)
@@ -2355,9 +2442,10 @@ void ML_(canonicaliseTables) ( struct _DebugInfo* di )
 /* Find a symbol-table index containing the specified pointer, or -1
    if not found.  Binary search.  */
 
-Word ML_(search_one_symtab) ( const DebugInfo* di, Addr ptr,
+Word ML_(search_one_symtab) ( DebugInfo* di, Addr ptr,
                               Bool findText )
 {
+   VG_(di_load_di)(di);
    Addr a_mid_lo, a_mid_hi;
    Word mid,
         lo = 0, 
@@ -2384,8 +2472,9 @@ Word ML_(search_one_symtab) ( const DebugInfo* di, Addr ptr,
 /* Find a location-table index containing the specified pointer, or -1
    if not found.  Binary search.  */
 
-Word ML_(search_one_loctab) ( const DebugInfo* di, Addr ptr )
+Word ML_(search_one_loctab) ( DebugInfo* di, Addr ptr )
 {
+   VG_(di_load_di)(di);
    Addr a_mid_lo, a_mid_hi;
    Word mid, 
         lo = 0, 
@@ -2408,8 +2497,9 @@ Word ML_(search_one_loctab) ( const DebugInfo* di, Addr ptr )
 /* Find a CFI-table index containing the specified pointer, or -1
    if not found.  Binary search.  */
 
-Word ML_(search_one_cfitab) ( const DebugInfo* di, Addr ptr )
+Word ML_(search_one_cfitab) ( DebugInfo* di, Addr ptr )
 {
+   VG_(di_load_di)(di);
    Word mid, 
         lo = 0, 
         hi = di->cfsi_used-1;

@@ -18,16 +18,18 @@ EXTRA_DIST = \
 # libmpiwrap-<platform>.so
 #----------------------------------------------------------------------------
 
-noinst_PROGRAMS  =
+# These are really real libraries, so they should go to libdir, not libexec.
+mpidir = $(pkglibdir)
+mpi_PROGRAMS  =
 if BUILD_MPIWRAP_PRI
-noinst_PROGRAMS += libmpiwrap-@VGCONF_ARCH_PRI@-@VGCONF_OS@.so
+mpi_PROGRAMS += libmpiwrap-@VGCONF_ARCH_PRI@-@VGCONF_OS@.so
 endif
 if BUILD_MPIWRAP_SEC
-noinst_PROGRAMS += libmpiwrap-@VGCONF_ARCH_SEC@-@VGCONF_OS@.so
+mpi_PROGRAMS += libmpiwrap-@VGCONF_ARCH_SEC@-@VGCONF_OS@.so
 endif
 
 if VGCONF_OS_IS_DARWIN
-noinst_DSYMS = $(noinst_PROGRAMS)
+mpi_DSYMS = $(mpi_PROGRAMS)
 endif
 
 
@@ -35,10 +37,6 @@ endif
 ## mflag_primary/mflag_secondary logic in ../configure.in unfortunately all need
 ## to be kept in sync with each other
 if VGCONF_OS_IS_LINUX
- MPI_FLAG_M3264_PRI = $(AM_FLAG_M3264_PRI)
- MPI_FLAG_M3264_SEC = $(AM_FLAG_M3264_SEC)
-endif
-if VGCONF_OS_IS_DRAGONFLY
  MPI_FLAG_M3264_PRI = $(AM_FLAG_M3264_PRI)
  MPI_FLAG_M3264_SEC = $(AM_FLAG_M3264_SEC)
 endif
@@ -54,16 +52,16 @@ endif
 
 if BUILD_MPIWRAP_PRI
 libmpiwrap_@VGCONF_ARCH_PRI@_@VGCONF_OS@_so_SOURCES  = libmpiwrap.c
-libmpiwrap_@VGCONF_ARCH_PRI@_@VGCONF_OS@_so_CPPFLAGS = -I$(top_srcdir)/include
+libmpiwrap_@VGCONF_ARCH_PRI@_@VGCONF_OS@_so_CPPFLAGS = -I$(top_builddir)/include
 libmpiwrap_@VGCONF_ARCH_PRI@_@VGCONF_OS@_so_CFLAGS   = \
-	$(CFLAGS_MPI) $(MPI_FLAG_M3264_PRI) -Wno-deprecated-declarations
+	$(CFLAGS_MPI) $(MPI_FLAG_M3264_PRI) @FLAG_W_NO_DEPRECATED_DECLARATIONS@
 libmpiwrap_@VGCONF_ARCH_PRI@_@VGCONF_OS@_so_LDFLAGS  = $(LDFLAGS_MPI)
 endif
 if BUILD_MPIWRAP_SEC
 libmpiwrap_@VGCONF_ARCH_SEC@_@VGCONF_OS@_so_SOURCES  = libmpiwrap.c
-libmpiwrap_@VGCONF_ARCH_SEC@_@VGCONF_OS@_so_CPPFLAGS = -I$(top_srcdir)/include
+libmpiwrap_@VGCONF_ARCH_SEC@_@VGCONF_OS@_so_CPPFLAGS = -I$(top_builddir)/include
 libmpiwrap_@VGCONF_ARCH_SEC@_@VGCONF_OS@_so_CFLAGS   = \
-	$(CFLAGS_MPI) $(MPI_FLAG_M3264_SEC) -Wno-deprecated-declarations
+	$(CFLAGS_MPI) $(MPI_FLAG_M3264_SEC) @FLAG_W_NO_DEPRECATED_DECLARATIONS@
 libmpiwrap_@VGCONF_ARCH_SEC@_@VGCONF_OS@_so_LDFLAGS  = $(LDFLAGS_MPI)
 endif
 

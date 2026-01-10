@@ -4,15 +4,15 @@
 /*--------------------------------------------------------------------*/
 
 /*
-   This file is part of Cachegrind, a Valgrind tool for cache
-   profiling programs.
+   This file is part of Cachegrind, a high-precision tracing profiler
+   built with Valgrind.
 
    Copyright (C) 2002-2017 Nicholas Nethercote
       njn@valgrind.org
 
    This program is free software; you can redistribute it and/or
    modify it under the terms of the GNU General Public License as
-   published by the Free Software Foundation; either version 2 of the
+   published by the Free Software Foundation; either version 3 of the
    License, or (at your option) any later version.
 
    This program is distributed in the hope that it will be useful, but
@@ -21,9 +21,7 @@
    General Public License for more details.
 
    You should have received a copy of the GNU General Public License
-   along with this program; if not, write to the Free Software
-   Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
-   02111-1307, USA.
+   along with this program; if not, see <http://www.gnu.org/licenses/>.
 
    The GNU General Public License is contained in the file COPYING.
 */
@@ -45,11 +43,12 @@
 /* How many bits at the bottom of an instruction address are
    guaranteed to be zero? */
 #if defined(VGA_ppc32) || defined(VGA_ppc64be)  || defined(VGA_ppc64le) \
-    || defined(VGA_mips32) || defined(VGA_mips64) || defined(VGA_arm64)
+    || defined(VGA_mips32) || defined(VGA_mips64) || defined(VGA_nanomips) \
+    || defined(VGA_arm64)
 #  define N_IADDR_LO_ZERO_BITS 2
 #elif defined(VGA_x86) || defined(VGA_amd64)
 #  define N_IADDR_LO_ZERO_BITS 0
-#elif defined(VGA_s390x) || defined(VGA_arm)
+#elif defined(VGA_s390x) || defined(VGA_arm) || defined(VGA_riscv64)
 #  define N_IADDR_LO_ZERO_BITS 1
 #else
 #  error "Unsupported architecture"

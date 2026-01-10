@@ -9,7 +9,7 @@
 
    Notice that the following BSD-style license applies to this one
    file (mpiwrap.c) only.  The rest of Valgrind is licensed under the
-   terms of the GNU General Public License, version 2, unless
+   terms of the GNU General Public License, version 3, unless
    otherwise indicated.  See the COPYING file in the source
    distribution for details.
 
@@ -278,13 +278,21 @@ static void showTy ( FILE* f, MPI_Datatype ty )
    else if (ty == MPI_LONG_INT)       fprintf(f,"LONG_INT");
    else if (ty == MPI_SHORT_INT)      fprintf(f,"SHORT_INT");
    else if (ty == MPI_2INT)           fprintf(f,"2INT");
+#  if defined(MPI_UB) && \
+      (!defined(OMPI_MAJOR_VERSION) || OMPI_MAJOR_VERSION < 3)
    else if (ty == MPI_UB)             fprintf(f,"UB");
+#  endif
+#  if defined(MPI_LB) && \
+      (!defined(OMPI_MAJOR_VERSION) || OMPI_MAJOR_VERSION < 3)
    else if (ty == MPI_LB)             fprintf(f,"LB");
+#  endif
 #  if defined(MPI_WCHAR)
    else if (ty == MPI_WCHAR)          fprintf(f,"WCHAR");
 #  endif
    else if (ty == MPI_LONG_LONG_INT)  fprintf(f,"LONG_LONG_INT");
 #  if defined(MPI_LONG_LONG)
+   // platform dependant? MPI_LONG_LONG and MPI_UNSIGNED_LONG_LONG can be the same
+   // coverity[DEADCODE:FALSE]
    else if (ty == MPI_LONG_LONG)      fprintf(f,"LONG_LONG");
 #  endif
 #  if defined(MPI_UNSIGNED_LONG_LONG)
@@ -345,43 +353,46 @@ static void showCombiner ( FILE* f, int combiner )
 {
    switch (combiner) {
       case MPI_COMBINER_NAMED:       fprintf(f, "NAMED"); break;
-#if   defined(MPI_COMBINER_DUP)
+#     if defined(MPI_COMBINER_DUP)
       case MPI_COMBINER_DUP:         fprintf(f, "DUP"); break;
 #     endif
       case MPI_COMBINER_CONTIGUOUS:  fprintf(f, "CONTIGUOUS"); break;
       case MPI_COMBINER_VECTOR:      fprintf(f, "VECTOR"); break;
-#if   defined(MPI_COMBINER_HVECTOR_INTEGER)
+#     if defined(MPI_COMBINER_HVECTOR_INTEGER) && \
+         (!defined(OMPI_MAJOR_VERSION) || OMPI_MAJOR_VERSION < 3)
       case MPI_COMBINER_HVECTOR_INTEGER: fprintf(f, "HVECTOR_INTEGER"); break;
 #     endif
       case MPI_COMBINER_HVECTOR:     fprintf(f, "HVECTOR"); break;
       case MPI_COMBINER_INDEXED:     fprintf(f, "INDEXED"); break;
-#if   defined(MPI_COMBINER_HINDEXED_INTEGER)
+#     if defined(MPI_COMBINER_HINDEXED_INTEGER) && \
+         (!defined(OMPI_MAJOR_VERSION) || OMPI_MAJOR_VERSION < 3)
       case MPI_COMBINER_HINDEXED_INTEGER: fprintf(f, "HINDEXED_INTEGER"); break;
 #     endif
       case MPI_COMBINER_HINDEXED:    fprintf(f, "HINDEXED"); break;
-#if   defined(MPI_COMBINER_INDEXED_BLOCK)
+#     if defined(MPI_COMBINER_INDEXED_BLOCK)
       case MPI_COMBINER_INDEXED_BLOCK: fprintf(f, "INDEXED_BLOCK"); break;
 #     endif
-#if   defined(MPI_COMBINER_STRUCT_INTEGER)
+#     if defined(MPI_COMBINER_STRUCT_INTEGER) && \
+         (!defined(OMPI_MAJOR_VERSION) || OMPI_MAJOR_VERSION < 3)
       case MPI_COMBINER_STRUCT_INTEGER: fprintf(f, "STRUCT_INTEGER"); break;
 #     endif
       case MPI_COMBINER_STRUCT:      fprintf(f, "STRUCT"); break;
-#if   defined(MPI_COMBINER_SUBARRAY)
+#     if defined(MPI_COMBINER_SUBARRAY)
       case MPI_COMBINER_SUBARRAY:    fprintf(f, "SUBARRAY"); break;
 #     endif
-#if   defined(MPI_COMBINER_DARRAY)
+#     if defined(MPI_COMBINER_DARRAY)
       case MPI_COMBINER_DARRAY:      fprintf(f, "DARRAY"); break;
 #     endif
-#if   defined(MPI_COMBINER_F90_REAL)
+#     if defined(MPI_COMBINER_F90_REAL)
       case MPI_COMBINER_F90_REAL:    fprintf(f, "F90_REAL"); break;
 #     endif
-#if   defined(MPI_COMBINER_F90_COMPLEX)
+#     if defined(MPI_COMBINER_F90_COMPLEX)
       case MPI_COMBINER_F90_COMPLEX: fprintf(f, "F90_COMPLEX"); break;
 #     endif
-#if   defined(MPI_COMBINER_F90_INTEGER)
+#     if defined(MPI_COMBINER_F90_INTEGER)
       case MPI_COMBINER_F90_INTEGER: fprintf(f, "F90_INTEGER"); break;
 #     endif
-#if   defined(MPI_COMBINER_RESIZED)
+#     if defined(MPI_COMBINER_RESIZED)
       case MPI_COMBINER_RESIZED:     fprintf(f, "RESIZED"); break;
 #     endif
       default: fprintf(f, "showCombiner:??"); break;
@@ -459,7 +470,12 @@ static long extentOfTy ( MPI_Datatype ty )
 {
    int      r;
    MPI_Aint n;
+#  if defined(MPI_TYPE_EXTENT)
    r = PMPI_Type_extent(ty, &n);
+#  else
+   MPI_Aint lb;
+   r = MPI_Type_get_extent(ty, &lb, &n);
+#  endif
    assert(r == MPI_SUCCESS);
    return (long)n;
 }
@@ -733,8 +749,11 @@ void walk_type ( void(*f)(void*,long), char* base, MPI_Datatype ty )
          f(base + offsetof(Ty,loc), sizeof(int));
          return;
       }
+#     if defined(MPI_LB) && defined(MPI_UB) && \
+         (!defined(OMPI_MAJOR_VERSION) || OMPI_MAJOR_VERSION < 3)
       if (ty == MPI_LB || ty == MPI_UB)
          return; /* have zero size, so nothing needs to be done */
+#     endif
       goto unhandled;
       /*NOTREACHED*/
    }
@@ -852,9 +871,15 @@ void walk_type ( void(*f)(void*,long), char* base, MPI_Datatype ty )
    }
 
    /* normal exit */
-   if (ints)  free(ints);
-   if (addrs) free(addrs);
-   if (dtys)  free(dtys);
+   if (n_ints > 0) {
+      free(ints);
+   }
+   if (n_addrs > 0) {
+      free(addrs);
+   }
+   if (n_dtys) {
+      free(dtys);
+   }
    return;
 
   unhandled:
@@ -1359,8 +1384,8 @@ static void maybe_complete ( Bool         error_in_status,
       if (count_from_Status(&recv_count, shadow->datatype, status)) {
          make_mem_defined_if_addressable(shadow->buf, recv_count, shadow->datatype);
          if (opt_verbosity > 1)
-            fprintf(stderr, "%s %5d: sReq- %p (completed)\n", 
-                            preamble, my_pid, request_before);
+            fprintf(stderr, "%s %5d: sReq- 0x%lx (completed)\n",
+                            preamble, my_pid, (unsigned long) request_before);
       }
       delete_shadow_Request(request_before);
    }
@@ -2262,10 +2287,10 @@ long WRAPPER_FOR(PMPI_Init)(int *argc, char ***argv)
    VALGRIND_GET_ORIG_FN(fn);
    before("Init");
    if (argc) {
-      check_mem_is_defined_untyped(argc, sizeof(int));
+      check_mem_is_defined_untyped(argc, sizeof(*argc));
    }
    if (argc && argv) {
-      check_mem_is_defined_untyped(*argv, *argc * sizeof(char**));
+      check_mem_is_defined_untyped(*argv, *argc * sizeof(**argv));
    }
    if (cONFIG_DER) VALGRIND_DISABLE_ERROR_REPORTING;
    CALL_FN_W_WW(err, fn, argc,argv);

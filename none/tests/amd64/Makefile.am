@@ -3,6 +3,9 @@ include $(top_srcdir)/Makefile.tool-tests.am
 
 dist_noinst_SCRIPTS = filter_cpuid filter_inf_nan filter_stderr gen_insn_test.pl
 
+# Used by avx-1.c, avx-vmovq and avx_estimate_insn.c
+noinst_HEADERS = avx_tests.h
+
 CLEANFILES = $(addsuffix .c,$(INSN_TESTS))
 
 INSN_TESTS = insn_basic insn_mmx insn_sse insn_sse2 insn_fpu
@@ -24,8 +27,11 @@ EXTRA_DIST = \
 	aes.vgtest aes.stdout.exp aes.stderr.exp \
 	amd64locked.vgtest amd64locked.stdout.exp amd64locked.stderr.exp \
 	avx-1.vgtest avx-1.stdout.exp avx-1.stderr.exp \
+	avx_estimate_insn.vgtest avx_estimate_insn.stderr.exp \
+	avx_estimate_insn.stdout.exp avx_estimate_insn.stdout.exp-amd \
+	avx-vmovq.vgtest avx-vmovq.stdout.exp avx-vmovq.stderr.exp \
 	avx2-1.vgtest avx2-1.stdout.exp avx2-1.stderr.exp \
-	asorep.stderr.exp asorep.stdout.exp asorep.vgtest \
+	asorep.stderr.exp asorep.vgtest \
 	bmi.stderr.exp bmi.stdout.exp bmi.vgtest \
 	bt_flags.stderr.exp bt_flags.stdout.exp bt_flags.vgtest \
 	fma.stderr.exp fma.stdout.exp fma.vgtest \
@@ -38,10 +44,13 @@ EXTRA_DIST = \
 	bug132918.stdout.exp-older-glibc \
 	bug156404-amd64.vgtest bug156404-amd64.stdout.exp \
 	bug156404-amd64.stderr.exp \
+	bug485148.vgtest bug485148.stdout.exp bug485148.stderr.exp \
+	bug487439.vgtest bug487439.stdout.exp bug487439.stderr.exp \
 	cet_nops.vgtest cet_nops.stdout.exp cet_nops.stderr.exp \
 	clc.vgtest clc.stdout.exp clc.stderr.exp \
 	crc32.vgtest crc32.stdout.exp crc32.stderr.exp \
 	cmpxchg.vgtest cmpxchg.stdout.exp cmpxchg.stderr.exp \
+	f16c.vgtest f16c.stderr.exp f16c.stdout.exp \
 	faultstatus.disabled faultstatus.stderr.exp \
 	fb_test_amd64.vgtest \
 	fb_test_amd64.stderr.exp fb_test_amd64.stdout.exp \
@@ -63,7 +72,7 @@ EXTRA_DIST = \
 	loopnel.stderr.exp loopnel.stdout.exp loopnel.vgtest \
 	lzcnt64.stderr.exp lzcnt64.stdout.exp lzcnt64.vgtest \
 	movbe.stderr.exp movbe.stdout.exp movbe.vgtest \
-	mpx.stderr.exp mpx.stdout.exp mpx.vgtest \
+	mpx.stderr.exp mpx.vgtest \
 	nan80and64.stderr.exp nan80and64.stdout.exp nan80and64.vgtest \
 	nibz_bennee_mmap.stderr.exp nibz_bennee_mmap.stdout.exp \
 	nibz_bennee_mmap.vgtest \
@@ -76,13 +85,14 @@ EXTRA_DIST = \
 	pcmpxstrx64w.stderr.exp pcmpxstrx64w.stdout.exp \
 	pcmpxstrx64w.vgtest \
 	rcl-amd64.vgtest rcl-amd64.stdout.exp rcl-amd64.stderr.exp \
+	rdrand.vgtest rdrand.stdout.exp rdrand.stderr.exp \
+	rdseed.vgtest rdseed.stdout.exp rdseed.stderr.exp \
 	redundantRexW.vgtest redundantRexW.stdout.exp \
 	redundantRexW.stderr.exp \
 	smc1.stderr.exp smc1.stdout.exp smc1.vgtest \
 	sbbmisc.stderr.exp sbbmisc.stdout.exp sbbmisc.vgtest \
 	shrld.stderr.exp shrld.stdout.exp shrld.vgtest \
-	ssse3_misaligned.stderr.exp ssse3_misaligned.stdout.exp \
-	ssse3_misaligned.vgtest \
+	ssse3_misaligned.stderr.exp ssse3_misaligned.vgtest \
 	sse4-64.stderr.exp sse4-64.stdout.exp sse4-64.vgtest \
 	sse4-64.stdout.exp-older-glibc \
 	slahf-amd64.stderr.exp slahf-amd64.stdout.exp \
@@ -90,13 +100,15 @@ EXTRA_DIST = \
 	tm1.vgtest tm1.stderr.exp tm1.stdout.exp \
 	x87trigOOR.vgtest x87trigOOR.stderr.exp x87trigOOR.stdout.exp \
 	xacq_xrel.stderr.exp xacq_xrel.stdout.exp xacq_xrel.vgtest \
-	xadd.stderr.exp xadd.stdout.exp xadd.vgtest
+	xadd.stderr.exp xadd.stdout.exp xadd.vgtest \
+	sse4-64.stdout.exp.freebsd sse4-64.stdout.exp-freebsd-clang
 
 check_PROGRAMS = \
 	allexec \
 	amd64locked \
 	bt_flags \
 	bug127521-64 bug132813-amd64 bug132918 bug137714-amd64 \
+	bug487439 \
 	cet_nops \
 	clc \
 	cmpxchg \
@@ -118,7 +130,9 @@ if BUILD_ADX_TESTS
 endif
 if BUILD_AVX_TESTS
 if BUILD_VPCLMULQDQ_TESTS
-  check_PROGRAMS += avx-1
+  check_PROGRAMS += avx-1 \
+		    avx_estimate_insn \
+		    avx-vmovq
 endif
 if BUILD_FMA4_TESTS
   check_PROGRAMS += fma4
@@ -150,10 +164,19 @@ if BUILD_BMI_TESTS
  check_PROGRAMS += bmi
 endif
 if BUILD_FMA_TESTS
- check_PROGRAMS += fma
+ check_PROGRAMS += fma bug485148
 endif
 if BUILD_MPX_TESTS
  check_PROGRAMS += mpx
+endif
+if BUILD_F16C_TESTS
+ check_PROGRAMS += f16c
+endif
+if BUILD_RDRAND_TESTS
+ check_PROGRAMS += rdrand
+endif
+if BUILD_RDSEED_TESTS
+ check_PROGRAMS += rdseed
 endif
 
 
@@ -182,6 +205,9 @@ allexec_CFLAGS		= $(AM_CFLAGS) @FLAG_W_NO_NONNULL@
 # generic C ones
 amd64locked_CFLAGS	= $(AM_CFLAGS) -O
 bug132918_LDADD		= -lm
+bug485148_CXXFLAGS      = ${AM_CXXFLAGS} -mfma
+bug485148_SOURCES       = bug485148.cpp
+bug487439_SOURCES	= bug487439.cpp
 cmpxchg_CFLAGS		= $(AM_CFLAGS) @FLAG_NO_PIE@
 fb_test_amd64_CFLAGS	= $(AM_CFLAGS) -O -fno-strict-aliasing
 fb_test_amd64_LDADD	= -lm
@@ -213,5 +239,5 @@ looper_CFLAGS		= $(AM_CFLAGS) @FLAG_NO_PIE@
 sbbmisc_CFLAGS		= $(AM_CFLAGS) @FLAG_NO_PIE@
 shrld_CFLAGS		= $(AM_CFLAGS) @FLAG_NO_PIE@
 
-.def.c: $(srcdir)/gen_insn_test.pl
+.def.c:
 	$(PERL) $(srcdir)/gen_insn_test.pl < $< > $@

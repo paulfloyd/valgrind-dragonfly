@@ -60,6 +60,33 @@
    __asm__ __volatile__( "li 11, 0" : : :/*trash*/"r11" ); \
    __asm__ __volatile__( "li 12, 0" : : :/*trash*/"r12" ); \
   } while (0)
+#elif defined(__nanomips__)
+#define CLEAR_CALLER_SAVED_REGS                                             \
+   do {                                                                     \
+      __asm__ __volatile__ (".set push       \n\t"                          \
+                            ".set noat       \n\t"                          \
+                            "move $at, $zero \n\t"                          \
+                            "move $t4, $zero \n\t"                          \
+                            "move $t5, $zero \n\t"                          \
+                            "move $a0, $zero \n\t"                          \
+                            "move $a1, $zero \n\t"                          \
+                            "move $a2, $zero \n\t"                          \
+                            "move $a3, $zero \n\t"                          \
+                            "move $a4, $zero \n\t"                          \
+                            "move $a5, $zero \n\t"                          \
+                            "move $a6, $zero \n\t"                          \
+                            "move $a7, $zero \n\t"                          \
+                            "move $t0, $zero \n\t"                          \
+                            "move $t1, $zero \n\t"                          \
+                            "move $t2, $zero \n\t"                          \
+                            "move $t3, $zero \n\t"                          \
+                            "move $t8, $zero \n\t"                          \
+                            "move $t9, $zero \n\t"                          \
+                            ".set pop        \n\t"                          \
+                            : : : "$at", "$t4", "$t5", "$a0", "$a1", "$a2", \
+                                  "$a3", "$a4", "$a5", "$a6", "$a7", "$t0", \
+                                  "$t1", "$t2", "$t3", "$t8", "$t9");       \
+   } while (0)
 #elif (__mips == 32)
 #define CLEAR_CALLER_SAVED_REGS                                              \
    do {                                                                      \
@@ -116,6 +143,54 @@
                                   "$8", "$9", "$10", "$11", "$12", "$13",    \
                                   "$14", "$15", "$24", "$25", "$31");        \
    } while (0)
+#elif defined (__clang__) && defined(VGA_x86)
+#define CLEAR_CALLER_SAVED_REGS                                              \
+   do {                                                                      \
+      __asm__ __volatile__ ("movl $0, %ecx\n\t"); \
+   } while (0)
+#elif defined (__clang__) && defined(VGA_amd64)
+#define CLEAR_CALLER_SAVED_REGS                                              \
+   do {                                                                      \
+      __asm__ __volatile__ ("movq $0, %r11\n\t"); \
+   } while (0)
+#elif defined(__arm__)
+/* 32bit arm */
+#define CLEAR_CALLER_SAVED_REGS                                              \
+   do {                                                                      \
+      __asm__ __volatile__ ("mov r0, $0\n\t");                              \
+      __asm__ __volatile__ ("mov r1, $0\n\t");                              \
+      __asm__ __volatile__ ("mov r2, $0\n\t");                              \
+      __asm__ __volatile__ ("mov r3, $0\n\t");                              \
+   } while (0)
+#elif defined(__aarch64__)
+/* 64bit arm */
+#define CLEAR_CALLER_SAVED_REGS                                              \
+   do {                                                                      \
+      __asm__ __volatile__ ("mov x0, 0\n\t");                              \
+      __asm__ __volatile__ ("mov x1, 0\n\t");                              \
+      __asm__ __volatile__ ("mov x2, 0\n\t");                              \
+      __asm__ __volatile__ ("mov x3, 0\n\t");                              \
+      __asm__ __volatile__ ("mov x4, 0\n\t");                              \
+      __asm__ __volatile__ ("mov x5, 0\n\t");                              \
+      __asm__ __volatile__ ("mov x6, 0\n\t");                              \
+      __asm__ __volatile__ ("mov x7, 0\n\t");                              \
+      __asm__ __volatile__ ("mov x8, 0\n\t");                              \
+      __asm__ __volatile__ ("mov x9, 0\n\t");                              \
+      __asm__ __volatile__ ("mov x10, 0\n\t");                              \
+      __asm__ __volatile__ ("mov x11, 0\n\t");                              \
+      __asm__ __volatile__ ("mov x12, 0\n\t");                              \
+      __asm__ __volatile__ ("mov x13, 0\n\t");                              \
+      __asm__ __volatile__ ("mov x14, 0\n\t");                              \
+      __asm__ __volatile__ ("mov x15, 0\n\t");                              \
+      __asm__ __volatile__ ("mov x16, 0\n\t");                              \
+      __asm__ __volatile__ ("mov x17, 0\n\t");                              \
+      __asm__ __volatile__ ("mov x18, 0\n\t");                              \
+   } while (0)
+#elif defined(__riscv)
+#define CLEAR_CALLER_SAVED_REGS \
+  do { \
+    __asm__ __volatile__( "li a0, 0" : : :/*trash*/"a0" ); \
+  } while (0)
 #else
 #define CLEAR_CALLER_SAVED_REGS  /*nothing*/
 #endif

@@ -13,7 +13,7 @@
 
    This program is free software; you can redistribute it and/or
    modify it under the terms of the GNU General Public License as
-   published by the Free Software Foundation; either version 2 of the
+   published by the Free Software Foundation; either version 3 of the
    License, or (at your option) any later version.
 
    This program is distributed in the hope that it will be useful, but
@@ -22,9 +22,7 @@
    General Public License for more details.
 
    You should have received a copy of the GNU General Public License
-   along with this program; if not, write to the Free Software
-   Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
-   02111-1307, USA.
+   along with this program; if not, see <http://www.gnu.org/licenses/>.
 
    The GNU General Public License is contained in the file COPYING.
 */
@@ -153,7 +151,7 @@ void VG_(print_preamble)(Bool logging_to_fd)
       VG_(printf_xml)("\n");
       VG_(printf_xml)("<valgrindoutput>\n");
       VG_(printf_xml)("\n");
-      VG_(printf_xml)("<protocolversion>4</protocolversion>\n");
+      VG_(printf_xml)("<protocolversion>6</protocolversion>\n");
       VG_(printf_xml)("<protocoltool>%s</protocoltool>\n", VG_(clo_toolname));
       VG_(printf_xml)("\n");
    }
@@ -423,6 +421,12 @@ static void finalize_sink_fd(OutputSink *sink, Int new_fd, Bool is_xml)
    } else {
       VG_(fcntl)(safe_fd, VKI_F_SETFD, VKI_FD_CLOEXEC);
       sink->fd = safe_fd;
+      /* If we created the new_fd (VgLogTo_File or VgLogTo_Socket), then we
+         don't need the original file descriptor open anymore. We only need
+         to keep it open if it was an existing fd given by the user (or
+         stderr).  */
+      if (sink->type != VgLogTo_Fd)
+         VG_(close)(new_fd);
    }
 }
 
@@ -1104,19 +1108,30 @@ void VG_(fmsg_bad_option) ( const HChar* opt, const HChar* format, ... )
 {
    va_list vargs;
    va_start(vargs,format);
+   Bool fatal = VG_(Clo_Mode)() & cloEP;
+   VgMsgKind mkind = fatal ? Vg_FailMsg : Vg_UserMsg;
+
+   if (fatal)
    revert_to_stderr();
-   VG_(message) (Vg_FailMsg, "Bad option: %s\n", opt);
-   VG_(vmessage)(Vg_FailMsg, format, vargs );
-   VG_(message) (Vg_FailMsg, "Use --help for more information or consult the user manual.\n");
+   VG_(message) (mkind, "Bad option: %s\n", opt);
+   VG_(vmessage)(mkind, format, vargs );
+   VG_(message) (mkind, "Use --help for more information or consult the user manual.\n");
    va_end(vargs);
+   if (fatal)
    VG_(exit)(1);
 }
 
 void VG_(fmsg_unknown_option) ( const HChar* opt)
 {
+   Bool fatal = VG_(Clo_Mode)() & cloEP;
+   VgMsgKind mkind = fatal ? Vg_FailMsg : Vg_UserMsg;
+
+   if (fatal)
    revert_to_stderr();
-   VG_(message) (Vg_FailMsg, "Unknown option: %s\n", opt);
-   VG_(message) (Vg_FailMsg, "Use --help for more information or consult the user manual.\n");
+
+   VG_(message) (mkind, "Unknown option: %s\n", opt);
+   VG_(message) (mkind, "Use --help for more information or consult the user manual.\n");
+   if (fatal)
    VG_(exit)(1);
 }
 
@@ -1175,7 +1190,7 @@ void VG_(err_config_error) ( const HChar* format, ... )
    VG_(sr_as_string)()
    ------------------------------------------------------------------ */
 
-#if defined(VGO_linux) || defined(VGO_dragonfly)
+#if defined(VGO_linux) || defined(VGO_freebsd)|| defined(VGO_dragonfly)
 // FIXME: Does this function need to be adjusted for MIPS's _valEx ?
 const HChar *VG_(sr_as_string) ( SysRes sr )
 {

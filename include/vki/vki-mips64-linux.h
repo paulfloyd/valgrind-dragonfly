@@ -8,11 +8,10 @@
    framework.
 
    Copyright (C) 2010-2017 RT-RK
-      mips-valgrind@rt-rk.com
 
    This program is free software; you can redistribute it and/or
    modify it under the terms of the GNU General Public License as
-   published by the Free Software Foundation; either version 2 of the
+   published by the Free Software Foundation; either version 3 of the
    License, or (at your option) any later version.
 
    This program is distributed in the hope that it will be useful, but
@@ -21,9 +20,7 @@
    General Public License for more details.
 
    You should have received a copy of the GNU General Public License
-   along with this program; if not, write to the Free Software
-   Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
-   02111-1307, USA.
+   along with this program; if not, see <http://www.gnu.org/licenses/>.
 */
 
 #ifndef __VKI_MIPS64_LINUX_H
@@ -309,6 +306,7 @@ struct vki_sigcontext {
 #define VKI_MAP_LOCKED      0x8000          /* pages are locked */
 #define VKI_MAP_POPULATE    0x10000         /* populate (prefault) pagetables */
 #define VKI_MAP_NONBLOCK    0x20000         /* do not block on IO */
+#define VKI_MAP_FIXED_NOREPLACE	0x100000    /* fail EEXIST if fixed map fails */
 
 //----------------------------------------------------------------------
 // From linux-2.6.35.9/include/asm-mips/fcntl.h
@@ -327,6 +325,7 @@ struct vki_sigcontext {
 #define VKI_O_APPEND        0x0008
 #define VKI_O_NONBLOCK      0x0080
 #define VKI_O_LARGEFILE     0x2000
+#define VKI_O_DIRECT        0x8000
 
 #define VKI_AT_FDCWD        -100
 

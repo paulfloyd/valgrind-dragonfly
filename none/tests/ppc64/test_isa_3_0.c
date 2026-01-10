@@ -25,8 +25,7 @@
  *   GNU General Public License for more details.
  *
  *   You should have received a copy of the GNU General Public License
- *   along with this program; if not, write to the Free Software
- *   Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+ *   along with this program; if not, see <http://www.gnu.org/licenses/>.
  */
 
 /*
@@ -286,7 +285,7 @@ static test_list_t testgroup_ia_ops_two[] = {
    { &test_moduw, "moduw" },
    { &test_modsd, "modsd" },
    { &test_modud, "modud" },
-   //{ &test_addex, "addex" },
+   { &test_addex, "addex" },
    { NULL       , NULL             },
 };
 
@@ -1178,23 +1177,23 @@ static void test_xscmpexpdp(void) {
 }
 
 static void test_xscmpeqdp(void) {
-   __asm__ __volatile__ ("xscmpeqdp   %x0, %x1, %x2 " : "+wa" (vec_xt): "ww" (vec_xa), "ww" (vec_xb));
+   __asm__ __volatile__ ("xscmpeqdp   %x0, %x1, %x2 " : "+wa" (vec_xt): "wa" (vec_xa), "wa" (vec_xb));
 }
 
 static void test_xscmpgtdp(void) {
-   __asm__ __volatile__ ("xscmpgtdp   %x0, %x1, %x2 " : "+wa" (vec_xt): "ww" (vec_xa), "ww" (vec_xb));
+   __asm__ __volatile__ ("xscmpgtdp   %x0, %x1, %x2 " : "+wa" (vec_xt): "wa" (vec_xa), "wa" (vec_xb));
 }
 
 static void test_xscmpgedp(void) {
-   __asm__ __volatile__ ("xscmpgedp   %x0, %x1, %x2 " : "+wa" (vec_xt): "ww" (vec_xa), "ww" (vec_xb));
+   __asm__ __volatile__ ("xscmpgedp   %x0, %x1, %x2 " : "+wa" (vec_xt): "wa" (vec_xa), "wa" (vec_xb));
 }
 
 static void test_xsmincdp(void) {
-   __asm__ __volatile__ ("xsmincdp   %x0, %x1, %x2 " : "+wa" (vec_xt): "ww" (vec_xa), "ww" (vec_xb));
+   __asm__ __volatile__ ("xsmincdp   %x0, %x1, %x2 " : "+wa" (vec_xt): "wa" (vec_xa), "wa" (vec_xb));
 }
 
 static void test_xsmaxcdp(void) {
-   __asm__ __volatile__ ("xsmaxcdp   %x0, %x1, %x2 " : "+wa" (vec_xt): "ww" (vec_xa), "ww" (vec_xb));
+   __asm__ __volatile__ ("xsmaxcdp   %x0, %x1, %x2 " : "+wa" (vec_xt): "wa" (vec_xa), "wa" (vec_xb));
 }
 
 static test_list_t testgroup_vector_scalar_compare_double[] = {
@@ -1828,15 +1827,15 @@ static void test_xscvhpdp(void) {
 }
 
 static void test_xscvdphp(void) {
-   __asm__ __volatile__ ("xscvdphp %x0, %x1 " : "+wi" (vec_xt) : "wi" (vec_xb));
+   __asm__ __volatile__ ("xscvdphp %x0, %x1 " : "+wa" (vec_xt) : "wa" (vec_xb));
 }
 
 static void test_xvcvhpsp(void) {
-   __asm__ __volatile__ ("xvcvhpsp %x0, %x1 " : "+ww" (vec_xt) : "ww" (vec_xb));
+   __asm__ __volatile__ ("xvcvhpsp %x0, %x1 " : "+wa" (vec_xt) : "wa" (vec_xb));
 }
 
 static void test_xvcvsphp(void) {
-   __asm__ __volatile__ ("xvcvsphp %x0, %x1 " : "+ww" (vec_xt) : "ww" (vec_xb));
+   __asm__ __volatile__ ("xvcvsphp %x0, %x1 " : "+wa" (vec_xt) : "wa" (vec_xb));
 }
 
 static test_list_t testgroup_vector_scalar_two_double[] = {
@@ -2634,8 +2633,8 @@ static void testfunction_vector_absolute (const char* instruction_name,
 
          printf("%s xa:%016lx %016lx xb:%016lx %016lx ",
                 instruction_name,
-                vec_xa[1],vec_xa[0],
-                vec_xb[1],vec_xb[0]
+                (unsigned long)vec_xa[1], (unsigned long)vec_xa[0],
+                (unsigned long)vec_xb[1], (unsigned long)vec_xb[0]
                 );
          printf(" => ");
 
@@ -2645,7 +2644,8 @@ static void testfunction_vector_absolute (const char* instruction_name,
 
          GET_CR(cr);
 
-         printf(" xt:%016lx %016lx (%08x)\n", vec_xt[1], vec_xt[0], cr);
+         printf(" xt:%016lx %016lx (%08x)\n", (unsigned long)vec_xt[1],
+                (unsigned long)vec_xt[0], cr);
       }
       if (verbose) printf("\n");
    }
@@ -2674,9 +2674,9 @@ static void testfunction_vector_xxpermute (const char* instruction_name,
 
          printf("%s %016lx %016lx %016lx %016lx, pcv[%016lx %016lx] => ",
                 instruction_name,
-                vec_xa[1], vec_xa[0],
-                vec_xt[1], vec_xt[0],
-                vec_xb[1], vec_xb[0]);
+                (unsigned long)vec_xa[1], (unsigned long)vec_xa[0],
+                (unsigned long)vec_xt[1], (unsigned long)vec_xt[0],
+                (unsigned long)vec_xb[1], (unsigned long)vec_xb[0]);
 
          SET_CR_ZERO;
 
@@ -2684,14 +2684,15 @@ static void testfunction_vector_xxpermute (const char* instruction_name,
 
          GET_CR(cr);
 
-         printf(" %016lx %016lx (%08x)\n", vec_xt[1], vec_xt[0], cr);
+         printf(" %016lx %016lx (%08x)\n", (unsigned long)vec_xt[1],
+                (unsigned long)vec_xt[0], cr);
 
 #if defined (DEBUG_VECTOR_PERMUTE)
          printf("DEBUG:%s %016lx %016lx %016lx %016lx, pcv[%016lx %016lx]\n",
                 ignore_name,
-                vec_xa[1], vec_xa[0],
-                vec_xt[1], vec_xt[0],
-                vec_xb[1], vec_xb[0]);
+                (unsigned long)vec_xa[1], (unsigned long)vec_xa[0],
+                (unsigned long)vec_xt[1], (unsigned long)vec_xt[0],
+                (unsigned long)vec_xb[1], (unsigned long)vec_xb[0]);
 #endif
       }
       if (verbose) printf("\n");
@@ -2720,13 +2721,13 @@ static void testfunction_vector_logical_one (const char* instruction_name,
 
          printf("%s xa:%016lx %016lx xt:%016lx %016lx => ",
                 instruction_name,
-                vec_xa[1], vec_xa[0],
-                vec_xt[1], vec_xt[0]);
+                (unsigned long)vec_xa[1], (unsigned long)vec_xa[0],
+                (unsigned long)vec_xt[1], (unsigned long)vec_xt[0]);
 
          (*test_function)();
 
          printf(" xt:%016lx %016lx\n",
-                vec_xt[1], vec_xt[0]);
+                (unsigned long)vec_xt[1], (unsigned long)vec_xt[0]);
       }
    }
    if (verbose) printf("\n");
@@ -2741,7 +2742,6 @@ static void testfunction_gpr_vector_logical_one (const char* instruction_name,
     *   rt, xa
     */
    int i;
-   int t;
    volatile HWord_t res;
 
    VERBOSE_FUNCTION_CALLOUT
@@ -2754,7 +2754,7 @@ static void testfunction_gpr_vector_logical_one (const char* instruction_name,
 
       printf("%s rt xt:%016lx %016lx => ",
 	     instruction_name,
-	     vec_xa[1], vec_xa[0]);
+	     (unsigned long)vec_xa[1], (unsigned long)vec_xa[0]);
 
       (*test_function)();
 
@@ -2788,9 +2788,9 @@ static void testfunction_vector_logical_four (const char* instruction_name,
 
             printf("%s %016lx %016lx %016lx %016lx, pcv[%016lx %016lx] => ",
                    instruction_name,
-                   vec_xa[1], vec_xa[0],
-                   vec_xb[1], vec_xb[0],
-                   vec_xc[1], vec_xc[0]);
+                   (unsigned long)vec_xa[1], (unsigned long)vec_xa[0],
+                   (unsigned long)vec_xb[1], (unsigned long)vec_xb[0],
+                   (unsigned long)vec_xc[1], (unsigned long)vec_xc[0]);
 
             SET_CR_ZERO;
 
@@ -2798,7 +2798,8 @@ static void testfunction_vector_logical_four (const char* instruction_name,
 
             GET_CR(cr);
 
-            printf(" %016lx %016lx (%08x)\n", vec_xt[1], vec_xt[0], cr);
+            printf(" %016lx %016lx (%08x)\n", (unsigned long)vec_xt[1],
+                   (unsigned long)vec_xt[0], cr);
          }
       }
 
@@ -2829,8 +2830,8 @@ void testfunction_vector_insert_or_extract_immediate (const char* instruction_na
        * suppress output for those cases per the global variable.
        */
       for (x_index = 0; x_index < 16 ; x_index++) {
-         vec_xb[0] = (unsigned long) vsxargs[i];
-         vec_xb[1] = (unsigned long) vsxargs[i+1];
+         vec_xb[0] = (unsigned long)vsxargs[i];
+         vec_xb[1] = (unsigned long)vsxargs[i+1];
 
          /* Run each test against all zeros and then all ones,
           * This is intended to help any bitfield changes stand out.
@@ -2846,10 +2847,12 @@ void testfunction_vector_insert_or_extract_immediate (const char* instruction_na
 
             if (!insert_extract_error) {
                printf("%s %016lx %016lx [%d] (into%s) => ",
-                      instruction_name, vec_xb[1], vec_xb[0], x_index,
+                      instruction_name, (unsigned long)vec_xb[1],
+                      (unsigned long)vec_xb[0], x_index,
                       (t == 0 ? " zeros" : "  ones") );
 
-               printf("%016lx %016lx\n", vec_xt[1], vec_xt[0]);
+               printf("%016lx %016lx\n", (unsigned long)vec_xt[1],
+                      (unsigned long)vec_xt[0]);
             }
          }
       }
@@ -2873,11 +2876,13 @@ static void testfunction_vector_immediate (const char * instruction_name,
          vec_xt[1] = (t == 0) ? 0 : 0xffffffffffffffff;
 
          printf("%s %016lx %016lx [%2x] => ",
-                instruction_name, vec_xt[1], vec_xt[0], x_splat);
+                instruction_name, (unsigned long)vec_xt[1],
+                (unsigned long)vec_xt[0], x_splat);
 
          (*test_function)();
 
-         printf("%016lx %016lx\n", vec_xt[1], vec_xt[0]);
+         printf("%016lx %016lx\n", (unsigned long)vec_xt[1],
+                (unsigned long)vec_xt[0]);
       }
    }
 }
@@ -2908,13 +2913,15 @@ static void testfunction_vector_loadstore (const char* instruction_name,
          initialize_buffer(buffer_pattern);
 
          printf("%s ", instruction_name);
-         printf("%016lx %016lx ", vec_xt[1], vec_xt[0]);
+         printf("%016lx %016lx ", (unsigned long)vec_xt[1],
+                (unsigned long)vec_xt[0]);
          dump_small_buffer();
          printf(" =>\n");
 
          (*test_function)();
 
-         printf("    %016lx %016lx ", vec_xt[1], vec_xt[0]);
+         printf("    %016lx %016lx ", (unsigned long)vec_xt[1],
+                (unsigned long)vec_xt[0]);
          dump_small_buffer();
          printf("\n");
       }
@@ -2945,12 +2952,14 @@ static void testfunction_vectorscalar_move_tofrom (const char * instruction_name
          vec_xt[1] = pattern[v%PATTERN_SIZE];
 
          printf("%s ", instruction_name);
-         printf("%016lx %016lx %lx %016lx ", vec_xt[1], vec_xt[0],
+         printf("%016lx %016lx %lx %016lx ", (unsigned long)vec_xt[1],
+                (unsigned long)vec_xt[0],
                 (long unsigned)r14,  (long unsigned)r15 );
 
          (*test_function)();
 
-         printf("=> %016lx %016lx %lx %016lx", vec_xt[1], vec_xt[0],
+         printf("=> %016lx %016lx %lx %016lx", (unsigned long)vec_xt[1],
+                (unsigned long)vec_xt[0],
                 (long unsigned)r14,  (long unsigned)r15 );
          printf("\n");
       }
@@ -3000,7 +3009,8 @@ static void testfunction_vector_scalar_loadstore_length (const char* instruction
             initialize_buffer(buffer_pattern);
 
             printf("%s ", instruction_name);
-            printf("%016lx %016lx ", vec_xt[1], vec_xt[0] );
+            printf("%016lx %016lx ", (unsigned long)vec_xt[1],
+                   (unsigned long)vec_xt[0] );
             if (uses_bits_0to7(instruction_name)) {
                printf(" 0x%2lx ", (long unsigned)r15>>56 );
 
@@ -3031,8 +3041,8 @@ static void testfunction_vector_scalar_loadstore_length (const char* instruction
 	      vec_xt[1] &= 0xFFFFFFFF00000000;
 	    }
 
-            printf("=> %016lx %016lx & %16lx", vec_xt[1], vec_xt[0],
-                   (long unsigned)r15 );
+            printf("=> %016lx %016lx & %16lx", (unsigned long)vec_xt[1],
+                   (unsigned long)vec_xt[0], (long unsigned)r15 );
             dump_small_buffer();
 
             printf("\n");
@@ -3054,7 +3064,8 @@ static void testfunction_vector_count_bytes (const char* instruction_name,
       r14 = 0;
 
       printf("%s ", instruction_name);
-      printf("%016lx %016lx %2d ", vec_xb[1], vec_xb[0], (unsigned)r14);
+      printf("%016lx %016lx %2d ", (unsigned long)vec_xb[1],
+             (unsigned long)vec_xb[0], (unsigned)r14);
 
       (*test_function)();
 
@@ -3076,7 +3087,8 @@ static void testfunction_vector_extract (const char* instruction_name,
       r14 = 0;
 
       printf("%s ", instruction_name);
-      printf("%016lx %016lx %2d ", vec_xb[1], vec_xb[0], (unsigned)r15);
+      printf("%016lx %016lx %2d ", (unsigned long)vec_xb[1],
+             (unsigned long)vec_xb[0], (unsigned)r15);
 
       (*test_function)();
 
@@ -3098,11 +3110,13 @@ static void testfunction_vector_extend_sign (const char* instruction_name,
       vec_xt = (vector unsigned long){0, 0};
 
       printf("%s ", instruction_name);
-      printf("%016lx %016lx ", vec_xb[1], vec_xb[0]);
+      printf("%016lx %016lx ",(unsigned long) vec_xb[1],
+             (unsigned long)vec_xb[0]);
 
       (*test_function)();
 
-      printf("=> %016lx %016lx\n", vec_xt[1], vec_xt[0]);
+      printf("=> %016lx %016lx\n", (unsigned long)vec_xt[1],
+             (unsigned long)vec_xt[0]);
    }
 }
 
@@ -3212,7 +3226,8 @@ static inline void testfunction_bcd_setup_inputs(const char * instruction_name,
 
 static inline void testfunction_bcd_display_outputs(const char * instruction_name) {
 
-   printf(" xt:%016lx %016lx", vec_xt[1], vec_xt[0] );
+   printf(" xt:%016lx %016lx", (unsigned long)vec_xt[1],
+          (unsigned long)vec_xt[0] );
 
    if (convert_to_zoned(instruction_name)) {
       /* convert to zoned */
@@ -3278,7 +3293,8 @@ static void testfunction_vector_scalar_two_quad (const char* instruction_name,
       vec_xt = (vector unsigned long){0, 0};
 
       printf("%s ", instruction_name);
-      printf("%016lx %016lx ", vec_xb[1], vec_xb[0]);
+      printf("%016lx %016lx ", (unsigned long)vec_xb[1],
+             (unsigned long)vec_xb[0]);
 
       SET_FPSCR_ZERO
 
@@ -3286,7 +3302,8 @@ static void testfunction_vector_scalar_two_quad (const char* instruction_name,
 
       GET_FPSCR(local_fpscr);
 
-      printf("=> %016lx %016lx", vec_xt[1], vec_xt[0]);
+      printf("=> %016lx %016lx", (unsigned long)vec_xt[1],
+             (unsigned long)vec_xt[0]);
       dissect_fpscr(local_fpscr);
       printf("\n");
    }
@@ -3332,12 +3349,13 @@ testfunction_vector_scalar_compare_double (const char* instruction_name,
             SET_FPSCR_ZERO
             if (instruction_only_uses_dword0_inputs(instruction_name)) {
                printf("%s %016lx %016lx",
-                      instruction_name, vec_xa[1], vec_xb[1]);
+                      instruction_name, (unsigned long)vec_xa[1],
+                      (unsigned long)vec_xb[1]);
             } else {
                printf("%s %016lx %016lx %016lx %016lx",
                       instruction_name,
-                      vec_xa[1], vec_xa[0],
-                      vec_xb[1], vec_xb[0]);
+                      (unsigned long)vec_xa[1], (unsigned long)vec_xa[0],
+                      (unsigned long)vec_xb[1], (unsigned long)vec_xb[0]);
             }
 
             if (verbose) printf(" cr#%d ", x_index);
@@ -3347,7 +3365,8 @@ testfunction_vector_scalar_compare_double (const char* instruction_name,
             (*test_function)();
 
             if (instruction_only_uses_dword0_inputs(instruction_name)) {
-               printf("%016lx %016lx", vec_xt[1], vec_xt[0]);
+               printf("%016lx %016lx", (unsigned long)vec_xt[1],
+                      (unsigned long)vec_xt[0]);
             }
 
             dissect_fpscr(local_fpscr);
@@ -3399,14 +3418,16 @@ testfunction_vector_scalar_data_class (const char* instruction_name,
 
          if (dcmx_match || (verbose>2)) {
             printf("%s %016lx, %016lx ",
-                   instruction_name, vec_xb[1], vec_xb[0]);
+                   instruction_name, (unsigned long)vec_xb[1],
+                   (unsigned long)vec_xb[0]);
 
             print_dcmx_field(x_index);
 
             if (dcmx_match)
                printf(" => Match.  ");
 
-            printf(" %016lx, %016lx ", vec_xt[1], vec_xt[0]);
+            printf(" %016lx, %016lx ", (unsigned long)vec_xt[1],
+                   (unsigned long)vec_xt[0]);
 
             dissect_cr_rn(local_cr,3);
             dissect_fpscr_dcmx_indicator(local_fpscr);
@@ -3414,9 +3435,11 @@ testfunction_vector_scalar_data_class (const char* instruction_name,
          }
 
          printf("%s %016lx, %016lx => ",
-                instruction_name, vec_xb[1], vec_xb[0]);
+                instruction_name, (unsigned long)vec_xb[1],
+                (unsigned long)vec_xb[0]);
 
-         printf(" %016lx, %016lx\n", vec_xt[1], vec_xt[0]);
+         printf(" %016lx, %016lx\n", (unsigned long)vec_xt[1],
+                (unsigned long)vec_xt[0]);
       }
    }
 }
@@ -3446,8 +3469,8 @@ static void testfunction_vector_scalar_compare_quads (const char* instruction_na
              */
             printf("%s %016lx%016lx %016lx%016lx (cr#%d) => ",
                    instruction_name,
-                   vec_xa[1], vec_xa[0],
-                   vec_xb[1], vec_xb[0],
+                   (unsigned long)vec_xa[1], (unsigned long)vec_xa[0],
+                   (unsigned long)vec_xb[1], (unsigned long)vec_xb[0],
                    x_index);
 
             SET_CR_ZERO
@@ -3484,7 +3507,7 @@ static void testfunction_vector_scalar_rounding_quads (const char* instruction_n
 
          printf("%s %016lx%016lx (R=%x) (RMC=%x) => ",
                 instruction_name,
-                vec_xb[1], vec_xb[0],
+                (unsigned long)vec_xb[1], (unsigned long)vec_xb[0],
                 (x_index & 0x4) >> 2, x_index & 0x3);
 
          SET_CR_ZERO
@@ -3494,7 +3517,8 @@ static void testfunction_vector_scalar_rounding_quads (const char* instruction_n
 
          GET_FPSCR(local_fpscr);
 
-         printf("%016lx%016lx", vec_xt[1], vec_xt[0]);
+         printf("%016lx%016lx", (unsigned long)vec_xt[1],
+                (unsigned long)vec_xt[0]);
          dissect_fpscr(local_fpscr);
          printf("\n");
       }
@@ -3527,15 +3551,16 @@ static void testfunction_vector_three_special (const char* instruction_name,
             SET_FPSCR_ZERO;
             printf("%s %016lx%016lx %016lx%016lx %016lx%016lx => ",
                    instruction_name,
-                   vec_xa[1], vec_xa[0],
-                   vec_xb[1], vec_xb[0],
-                   vec_xt[1], vec_xt[0]);
+                   (unsigned long)vec_xa[1], (unsigned long)vec_xa[0],
+                   (unsigned long)vec_xb[1], (unsigned long)vec_xb[0],
+                   (unsigned long)vec_xt[1], (unsigned long)vec_xt[0]);
 
             (*test_function)();
 
             GET_FPSCR(local_fpscr);
 
-            printf(" %016lx%016lx", vec_xt[1], vec_xt[0]);
+            printf(" %016lx%016lx", (unsigned long)vec_xt[1],
+                   (unsigned long)vec_xt[0]);
             dissect_fpscr(local_fpscr);
             printf("\n");
          }
@@ -3581,7 +3606,7 @@ static void testfunction_vector_scalar_two_double(const char* instruction_name,
                binary16_float_vsxargs[(nb_float_vsxargs - 1) - i ] << 48
             };
             printf("   vec_xb[1] = 0x%lx, vec_xb[0] = 0x%lx ",
-                   vec_xb[1], vec_xb[0]);
+                   (unsigned long)vec_xb[1], (unsigned long)vec_xb[0]);
 
          } else if (uses_single_precision_input(instruction_name)) {
             vec_xb = (vector unsigned long) {
@@ -3591,7 +3616,7 @@ static void testfunction_vector_scalar_two_double(const char* instruction_name,
                binary32_float_vsxargs[nb_float_vsxargs - 1 - j ] << 32
             };
             printf("   vec_xb[1] = 0x%lx, vec_xb[0] = 0x%lx ",
-                   vec_xb[1], vec_xb[0]);
+                   (unsigned long)vec_xb[1], (unsigned long)vec_xb[0]);
 
          } else { /* uses double */
             r14 = binary64_float_vsxargs[i];
@@ -3601,7 +3626,8 @@ static void testfunction_vector_scalar_two_double(const char* instruction_name,
 
          vec_xt = (vector unsigned long){0, 0};
 
-         printf("%016lx %016lx ", vec_xb[1], vec_xb[0] );
+         printf("%016lx %016lx ", (unsigned long)vec_xb[1],
+                (unsigned long)vec_xb[0] );
 
          if ((verbose > 2) && uses_double_precision_input(instruction_name)) {
             dissect_binary64_float(vec_xb[1]);
@@ -3614,7 +3640,8 @@ static void testfunction_vector_scalar_two_double(const char* instruction_name,
         (*test_function)();
 
          GET_FPSCR(local_fpscr);
-         printf(" %016lx %016lx", vec_xt[1], vec_xt[0]);
+         printf(" %016lx %016lx", (unsigned long)vec_xt[1],
+                (unsigned long)vec_xt[0]);
 
          if ((verbose > 2) && uses_half_precision_output(instruction_name)) {
             dissect_double_as_16s(vec_xt[1]);
@@ -3836,12 +3863,14 @@ static void testfunction_bcd_misc (const char* instruction_name,
          if (short_circuit) continue;
 
          printf("%s ",  instruction_name);
-         printf("xa:%016lx %016lx ", vec_xa[1], vec_xa[0]);
+         printf("xa:%016lx %016lx ", (unsigned long)vec_xa[1],
+                (unsigned long)vec_xa[0]);
 
          if (!shift_or_truncate_instruction)
             dissect_packed_decimal_sign(xa_sign);
 
-         printf(" xb:%016lx %016lx ", vec_xb[1], vec_xb[0]);
+         printf(" xb:%016lx %016lx ", (unsigned long)vec_xb[1],
+                (unsigned long)vec_xb[0]);
 
          if (convert_from_zoned(instruction_name)) {
             /* convert from zoned */

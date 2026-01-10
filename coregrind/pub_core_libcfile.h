@@ -12,7 +12,7 @@
 
    This program is free software; you can redistribute it and/or
    modify it under the terms of the GNU General Public License as
-   published by the Free Software Foundation; either version 2 of the
+   published by the Free Software Foundation; either version 3 of the
    License, or (at your option) any later version.
 
    This program is distributed in the hope that it will be useful, but
@@ -21,9 +21,7 @@
    General Public License for more details.
 
    You should have received a copy of the GNU General Public License
-   along with this program; if not, write to the Free Software
-   Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
-   02111-1307, USA.
+   along with this program; if not, see <http://www.gnu.org/licenses/>.
 
    The GNU General Public License is contained in the file COPYING.
 */
@@ -45,6 +43,11 @@ extern Int VG_(fcntl)   ( Int fd, Int cmd, Addr arg );
 
 /* Convert an fd into a filename */
 extern Bool VG_(resolve_filename) ( Int fd, const HChar** buf );
+
+#if defined(VGO_freebsd)
+/* get the flags used to obtain an fd */
+extern Bool VG_(resolve_filemode) ( Int fd, Int * result );
+#endif
 
 /* Return the size of a file, or -1 in case of error */
 extern Long VG_(fsize) ( Int fd );
@@ -106,6 +109,9 @@ extern Int VG_(mkstemp) ( const HChar* part_of_name, /*OUT*/HChar* fullname );
    VG_(get_startup_wd) (in pub_tool_libcfile.h).  Note that might
    return if the working directory couldn't be found.  */
 extern void VG_(record_startup_wd) ( void );
+
+/* Resolves a path to a canonical absolute path */
+extern Bool VG_(realpath)(const HChar *path, HChar *resolved);
 
 #endif   // __PUB_CORE_LIBCFILE_H
 
