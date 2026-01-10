@@ -530,6 +530,7 @@ typedef __vki_signalfn_t *__vki_sighandler_t;
 #define	VKI_SA_NODEFER		0x0010
 #define	VKI_SA_NOCLDWAIT	0x0020
 #define	VKI_SA_SIGINFO		0x0040
+#define VKI_SA_RESTORER         0 // DragonFly does not have this
 
 #define	VKI_SS_ONSTACK		0x0001
 #define	VKI_SS_DISABLE		0x0004
@@ -2279,22 +2280,22 @@ typedef enum vki_idtype {
 	 * The numerical values are kept synchronized with the Solaris
 	 * values.
 	 */
-	P_PID,			/* A process identifier. */
-	P_PPID,			/* A parent process identifier.	*/
-	P_PGID,			/* A process group identifier. */
-	P_SID,			/* A session identifier. */
-	P_CID,			/* A scheduling class identifier. */
-	P_UID,			/* A user identifier. */
-	P_GID,			/* A group identifier. */
-	P_ALL,			/* All processes. */
-	P_LWPID,		/* An LWP identifier. */
-	P_TASKID,		/* A task identifier. */
-	P_PROJID,		/* A project identifier. */
-	P_POOLID,		/* A pool identifier. */
-	P_JAILID,		/* A zone identifier. */
-	P_CTID,			/* A (process) contract identifier. */
-	P_CPUID,		/* CPU identifier. */
-	P_PSETID		/* Processor set identifier. */
+	VKI_P_PID,			/* A process identifier. */
+	VKI_P_PPID,			/* A parent process identifier.	*/
+	VKI_P_PGID,			/* A process group identifier. */
+	VKI_P_SID,			/* A session identifier. */
+	VKI_P_CID,			/* A scheduling class identifier. */
+	VKI_P_UID,			/* A user identifier. */
+	VKI_P_GID,			/* A group identifier. */
+	VKI_P_ALL,			/* All processes. */
+	VKI_P_LWPID,		/* An LWP identifier. */
+	VKI_P_TASKID,		/* A task identifier. */
+	VKI_P_PROJID,		/* A project identifier. */
+	VKI_P_POOLID,		/* A pool identifier. */
+	VKI_P_JAILID,		/* A zone identifier. */
+	VKI_P_CTID,			/* A (process) contract identifier. */
+	VKI_P_CPUID,		/* CPU identifier. */
+	VKI_P_PSETID		/* Processor set identifier. */
 } vki_idtype_t;			/* The type of id_t we are using. */
 
 struct vki_reaper_status {

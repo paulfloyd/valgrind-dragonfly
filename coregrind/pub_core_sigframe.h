@@ -58,7 +58,7 @@ void VG_(sigframe_create) ( ThreadId tid,
 
 /* Remove a signal frame from thread 'tid's stack, and 
    restore the CPU state from it. */
-#ifdef VGO_freebsd || defined(VGO_dragonfly)
+#if defined(VGO_freebsd) || defined(VGO_dragonfly)
 extern 
 void VG_(sigframe_destroy)( ThreadId tid );
 #else

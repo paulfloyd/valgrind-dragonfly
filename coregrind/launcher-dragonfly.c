@@ -54,8 +54,10 @@
 
 
 
+#if !defined(PATH_MAX)
 #define PATH_MAX 4096 /* POSIX refers to this a lot but I dunno
                          where it is defined */
+#endif
 
 #ifndef EM_X86_64
 #define EM_X86_64 62    // elf.h doesn't define this on some older systems
@@ -142,7 +144,7 @@ static const char *select_platform(const char *clientname)
       }
 
       // Get the interpreter name.
-      interp = &header[i];
+      interp = (char*)&header[i];
       while (1) {
          if (i == n_bytes) break;
          if (isspace(header[i])) break;

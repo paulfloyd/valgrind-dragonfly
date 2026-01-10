@@ -496,7 +496,7 @@ Bool ML_(am_resolve_filename) ( Int fd, /*OUT*/HChar* buf, Int nbuf )
       }
       if (tmp[0] == '/') return True;
    }
-   return
+   return False;
 
 #elif defined(VGO_darwin)
    HChar tmp[VKI_MAXPATHLEN+1];

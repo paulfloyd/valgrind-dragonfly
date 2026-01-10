@@ -402,6 +402,9 @@ SysRes VG_(mk_SysRes_arm64_freebsd) ( ULong val, ULong val2, Bool err ) {
    return r;
 }
 
+
+#elif defined(VGO_dragonfly)
+
 SysRes VG_(mk_SysRes_amd64_dragonfly) ( ULong val, ULong val2, Bool err ) {
    SysRes r;
    r._isError = err;

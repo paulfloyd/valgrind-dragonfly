@@ -207,7 +207,7 @@ VG_(disp_cp_xindir):
 	movq	OFFSET_amd64_RIP(%rbp), %rax
 
         /* stats only */
-        addl    $1, VG_(stats__n_xindirs_32)
+        addl    $1, VG_(stats__n_xIndirs_32)
         
 	/* try a fast lookup in the translation cache */
 	movabsq $VG_(tt_fast), %rcx
@@ -225,7 +225,7 @@ VG_(disp_cp_xindir):
 
 fast_lookup_failed:
         /* stats only */
-        addl    $1, VG_(stats__n_xindir_misses_32)
+        addl    $1, VG_(stats__n_xIndir_misses_32)
 
 	movq	$VG_TRC_INNER_FASTMISS, %rax
         movq    $0, %rdx

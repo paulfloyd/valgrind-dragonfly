@@ -103,7 +103,7 @@ struct auxv {
 #if defined(VGO_dragonfly)
 // sysctl, modfind
 //extern Int VG_(sysctl)(Int *oid, UInt oidlen, void *oldp, vki_size_t *oldlenp, void *newp, vki_size_t newlen);
-extern Int VG_(sysctlbyname)(const Char *name, void *oldp, vki_size_t *oldlenp, void *newp, vki_size_t newlen);
+extern Int VG_(sysctlbyname)(const HChar *name, void *oldp, SizeT *oldlenp, const void *newp, SizeT newlen);
 extern Int VG_(getosreldate)(void);
 extern Bool VG_(is32on64)(void);
 #endif

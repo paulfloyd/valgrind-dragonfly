@@ -1132,7 +1132,7 @@ extern void my_sigreturn(void);
    "my_sigreturn:\n" \
    "ud2\n" \
    ".previous\n"
-#elif defined(VGP_x86_freebsd) || defined(VGP_amd64_freebsd)
+#elif defined(VGP_x86_freebsd) || defined(VGP_amd64_freebsd) || defined(VGO_dragonfly)
 /* Not used on FreeBSD */
 # define _MY_SIGRETURN(name) \
     ".text\n" \

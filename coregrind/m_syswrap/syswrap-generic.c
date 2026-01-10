@@ -4532,14 +4532,14 @@ Bool ML_(do_sigkill)(Int pid, Int tgid)
 
    tid = VG_(lwpid_to_vgtid)(pid);
    if (tid == VG_INVALID_THREADID)
-      return False;		/* none of our threads */
+      return False;             /* none of our threads */
 
    tst = VG_(get_ThreadState)(tid);
    if (tst == NULL || tst->status == VgTs_Empty)
-      return False;		/* hm, shouldn't happen */
+      return False;             /* hm, shouldn't happen */
 
    if (tgid != -1 && tst->os_state.threadgroup != tgid)
-      return False;		/* not the right thread group */
+      return False;             /* not the right thread group */
 
    /* Fatal SIGKILL sent to one of our threads.
       "Handle" the signal ourselves, as trying to have tid
@@ -4549,22 +4549,18 @@ Bool ML_(do_sigkill)(Int pid, Int tgid)
       it is not particularly crucial that "tid" does the work to
       terminate the process.  */
 
-      if (VG_(clo_trace_signals))
-	 VG_(message)(Vg_DebugMsg,
+   if (VG_(clo_trace_signals))
+      VG_(message)(Vg_DebugMsg,
                    "Thread %u %s being killed with SIGKILL, running tid: %u\n",
                    tst->tid, VG_(name_of_ThreadStatus) (tst->status), VG_(running_tid));
-      
+
    if (!VG_(is_running_thread)(tid))
       tst = VG_(get_ThreadState)(VG_(running_tid));
    VG_(nuke_all_threads_except) (VG_(running_tid), VgSrc_FatalSig);
    VG_(reap_threads)(VG_(running_tid));
-      tst->exitreason = VgSrc_FatalSig;
-      tst->os_state.fatalsig = VKI_SIGKILL;
-      
-      if (!VG_(is_running_thread)(tid))
-	 VG_(get_thread_out_of_syscall)(tid);
-   }
-   
+   tst->exitreason = VgSrc_FatalSig;
+   tst->os_state.fatalsig = VKI_SIGKILL;
+
    return True;
 }
 
@@ -5275,7 +5271,7 @@ PRE(sys_setrlimit)
    }
    else if (((struct vki_rlimit *)(Addr)ARG2)->rlim_cur
             > ((struct vki_rlimit *)(Addr)ARG2)->rlim_max) {
-#if defined(VGO_freebsd)|| defined(VGO_dragonfly)
+#if defined(VGO_freebsd) || defined(VGO_dragonfly)
       SET_STATUS_Failure( VKI_EPERM );
 #else
       SET_STATUS_Failure( VKI_EINVAL );
@@ -5596,7 +5592,7 @@ PRE(sys_sethostname)
 #undef PRE
 #undef POST
 
-#endif // defined(VGO_linux) || defined(VGO_darwin) || defined(VGO_solaris) || defined(VGO_freebsd)|| defined(VGO_dragonfly)
+#endif // defined(VGO_linux) || defined(VGO_darwin) || defined(VGO_solaris) || defined(VGO_freebsd) || defined(VGO_dragonfly)
 
 /*--------------------------------------------------------------------*/
 /*--- end                                                          ---*/

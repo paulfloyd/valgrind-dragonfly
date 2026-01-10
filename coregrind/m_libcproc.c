@@ -1087,7 +1087,7 @@ UInt VG_(read_millisecond_timer) ( void )
    return (now - base) / 1000;
 }
 
-#  if defined(VGO_linux) || defined(VGO_solaris) || defined(VGO_freebsd)
+#  if defined(VGO_linux) || defined(VGO_solaris) || defined(VGO_freebsd) || defined(VGO_dragonfly)
 void VG_(clock_gettime) ( struct vki_timespec *ts, vki_clockid_t clk_id )
 {
     SysRes res;

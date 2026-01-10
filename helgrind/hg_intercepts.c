@@ -266,7 +266,7 @@ static const HChar* lame_strerror ( long err )
       case EDEADLK:     return "EDEADLK: Resource deadlock would occur";
       case EOPNOTSUPP:  return "EOPNOTSUPP: Operation not supported on "
                                "transport endpoint"; /* honest, guv */
-#if !defined(VGO_freebsd) || defined(VGO_dragonfly)
+#if !defined(VGO_freebsd) && !defined(VGO_dragonfly)
       case ETIME:       return "ETIME: Timer expired";
 #endif
       default:          return "hg_intercepts.c: lame_strerror(): "
@@ -3361,7 +3361,7 @@ static int sem_trywait_WRK(sem_t* sem)
    return ret;
 }
 
-#if defined(VGO_linux)
+#if defined(VGO_linux) || defined(VGO_dragonfly)
 PTH_FUNC(int, semZutrywait, sem_t* sem) { /* sem_trywait */
    return sem_trywait_WRK(sem);
 }
@@ -3426,7 +3426,7 @@ static int sem_timedwait_WRK(sem_t* sem, const struct timespec* abs_timeout)
    return ret;
 }
 
-#if defined(VGO_linux)
+#if defined(VGO_linux) || defined(VGO_dragonfly)
 PTH_FUNC(int, semZutimedwait, sem_t* sem, const struct timespec* abs_timeout) { /* sem_timedwait */
    return sem_timedwait_WRK(sem, abs_timeout);
 }

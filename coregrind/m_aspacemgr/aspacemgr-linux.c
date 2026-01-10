@@ -314,7 +314,7 @@ Addr VG_(clo_aspacem_minAddr)
 # endif
 #elif defined(VGO_solaris)
    = (Addr) 0x00100000; // 1MB
-#elif defined(VGO_freebsd)
+#elif defined(VGO_freebsd) || defined(VGO_dragonfly)
    = (Addr) 0x04000000; // 64M
 #else
 #endif
@@ -4700,7 +4700,7 @@ static ULong strtoul16( const HChar* str, HChar** endptr )
 static void parse_procselfmaps (
       void (*record_mapping)( Addr addr, SizeT len, UInt prot,
                               ULong dev, ULong ino, Off64T offset, 
-                              const HChar* filename ),
+                              const HChar* filename, Bool ignore_offset ),
       void (*record_gap)( Addr addr, SizeT len )
    )
 {
@@ -4711,7 +4711,7 @@ static void parse_procselfmaps (
     ULong dev, ino;
     Off64T offset;
     int read, mapfd, secfd;
-    const char *buf = procmap_buf, *ptr;
+    char *buf = procmap_buf, *ptr;
 
     res = ML_(am_open)("/proc/curproc/map", VKI_O_RDONLY, 0);
     mapfd = sr_Res(res);
@@ -4753,7 +4753,7 @@ static void parse_procselfmaps (
 
 	/* afaik no way to get file offset information */
 	if (record_mapping)
-	    (*record_mapping)(start, end - start, prot, dev, ino, 0, ptr);
+	    (*record_mapping)(start, end - start, prot, dev, ino, 0, ptr, False );
     }
 
     /* old

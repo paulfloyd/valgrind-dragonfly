@@ -281,7 +281,7 @@ Bool VG_(resolve_filemode) ( Int fd, Int * result )
 SysRes VG_(mkfifo) ( const HChar* pathname, Int mode )
 {
 #  if defined(VGO_dragonfly)
-   SysRes res = VG_(do_syscall2)(__NR_mkfifo, pathname, mode);
+   SysRes res = VG_(do_syscall2)(__NR_mkfifo, (Addr)pathname, mode);
 #  else
 #    error Unknown OS
 #  endif
@@ -295,7 +295,7 @@ SysRes VG_(mknod) ( const HChar* pathname, Int mode, UWord dev )
    /* More recent Linux platforms have only __NR_mknodat and no __NR_mknod. */
    SysRes res = VG_(do_syscall4)(__NR_mknodat,
                                  VKI_AT_FDCWD, (UWord)pathname, mode, dev);
-#  elif defined(VGO_linux) || defined(VGO_darwin)
+#  elif defined(VGO_linux) || defined(VGO_darwin) || defined(VGO_dragonfly)
    SysRes res = VG_(do_syscall3)(__NR_mknod,
                                  (UWord)pathname, mode, dev);
 #  elif defined(VGO_freebsd)
@@ -750,6 +750,11 @@ struct vki_stat buf;
 #elif defined(VGO_darwin)
 
    /* check this on Darwin */
+   struct vki_stat buf;
+   res = VG_(do_syscall2)(__NR_lstat, (UWord)file_name, (UWord)&buf);
+
+#elif defined(VGO_dragonfly)
+
    struct vki_stat buf;
    res = VG_(do_syscall2)(__NR_lstat, (UWord)file_name, (UWord)&buf);
 

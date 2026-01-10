@@ -2601,6 +2601,8 @@ static void final_tidyup(ThreadId tid)
 /*=== Getting to main() alive: LINUX                               ===*/
 /*====================================================================*/
 
+// FIXME PJF what is Dragonfly doing in the Linux block?
+// move it to a separate block
 #if defined(VGO_linux) || defined(VGO_dragonfly)
 
 /* If linking of the final executables is done with glibc present,
@@ -3033,6 +3035,7 @@ asm("\n"
     "\tbreak  0x7\n"
     ".previous\n"
 );
+// FIXMe PJF move this to a Dragonfly block
 #elif defined(VGP_x86_dragonfly)
 asm("\n"
     ".text\n"
@@ -3248,6 +3251,8 @@ void _start_in_C_linux ( UWord* pArgc )
    /* NOTREACHED */
    VG_(exit)(r);
 }
+
+#endif
 
 
 /*====================================================================*/

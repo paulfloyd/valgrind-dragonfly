@@ -335,7 +335,7 @@ Int VG_(sigaction) ( Int signum,
    return sr_isError(res) ? -1 : 0;
 
 
-#  elif defined(VGO_freebsd)
+#  elif defined(VGO_freebsd) || defined(VGO_dragonfly)
    SysRes res = VG_(do_syscall3)(__NR_sigaction,
                                  signum, (UWord)act, (UWord)oldact);
    return sr_isError(res) ? -1 : 0;

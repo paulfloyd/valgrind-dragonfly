@@ -4780,7 +4780,7 @@ const SyscallTableEntry ML_(syscall_table)[] = {
 
    GENX_(__NR_write,			sys_write),			// 4
    GENXY(__NR_open,			sys_open),			// 5
-   GENXY(__NR_close,			sys_close),			// 6
+   GENX_(__NR_close,			sys_close),			// 6
    GENXY(__NR_wait4,			sys_wait4),			// 7
    BSDX_(__NR_wait6,			sys_wait6),
 
@@ -5401,7 +5401,7 @@ const SyscallTableEntry ML_(syscall_table)[] = {
    //BSDX_(__NR_shm_unlink,		sys_shm_unlink),		// 483
 
    // cpuset								   484
-   GENX_(__NR_mcontrol,			sys_mcontrol), 			// 485
+   //GENX_(__NR_mcontrol,			sys_mcontrol), 			// 485
    // cpuset_getid							   486
 
    //BSDXY(__NR_cpuset_getaffinity,	sys_cpuset_getaffinity),	// 487
@@ -5471,8 +5471,24 @@ const SyscallTableEntry ML_(syscall_table)[] = {
 	//BSDX_(__NR_vmspace_pwrite, 	sys_vmspace_pwrite),
 };
 
-const UInt ML_(syscall_table_size) =
-	    sizeof(ML_(syscall_table)) / sizeof(ML_(syscall_table)[0]);
+   
+const SyscallTableEntry* ML_(get_dragonfly_syscall_entry) ( UInt sysno )
+{
+   const UInt syscall_table_size
+      = sizeof(ML_(syscall_table)) / sizeof(ML_(syscall_table)[0]);
+   
+   /* Is it in the contiguous initial section of the table? */
+   if (sysno < syscall_table_size) {
+      const SyscallTableEntry* sys = &ML_(syscall_table)[sysno];
+      if (sys->before == NULL) {
+         return NULL; /* no entry */
+      }
+      return sys;
+   }
+
+   /* Can't find a wrapper */
+   return NULL;
+}
 
 #endif // defined(VGO_dragonfly)
 

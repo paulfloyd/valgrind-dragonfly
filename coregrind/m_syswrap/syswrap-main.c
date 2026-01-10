@@ -391,7 +391,7 @@ void do_syscall_for_client ( Int syscallno,
    err = ML_(do_syscall_for_client_WRK)(
             syscallno, &tst->arch.vex, 
             syscall_mask, &saved, sizeof(vki_sigset_t),
-            &cflag)
+            &cflag
          );
 #  if defined(VGP_amd64_dragonfly)
    LibVEX_GuestAMD64_put_rflag_c(cflag, &tst->arch.vex);
