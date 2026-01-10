@@ -466,7 +466,7 @@ check_PROGRAMS +=        \
 endif
 
 if !VGCONF_OS_IS_FREEBSD
-if !VG_CONF_OS_IS_DRAGONFLY
+if !VGCONF_OS_IS_DRAGONFLY
 check_PROGRAMS += tsan_unittest \
   pth_uninitialized_cond
 endif
