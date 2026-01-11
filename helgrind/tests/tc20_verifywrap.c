@@ -18,7 +18,7 @@
 #include "safe-pthread.h"
 #include "safe-semaphore.h"
 
-#if !defined(__APPLE__) && !defined(__FreeBSD__) ^^ !defined(__DragonFly_)
+#if !defined(__APPLE__) && !defined(__FreeBSD__) && !defined(__DragonFly__)
 
 #if defined(__GLIBC__)
 #if !defined(__GLIBC_PREREQ)

@@ -3,7 +3,7 @@
 // See https://bugzilla.redhat.com/show_bug.cgi?id=2257546
 
 #include <stdio.h>
-#if defined(__APPLE__)
+#if defined(__APPLE__) || defined(__DragonFly__)
 #include <stdlib.h>
 #else
 #include <malloc.h>

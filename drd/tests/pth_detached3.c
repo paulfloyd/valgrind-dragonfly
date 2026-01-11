@@ -26,7 +26,7 @@ int main(int argc, char** argv)
   pthread_detach(thread);
 
   /* Invoke pthread_detach() with an invalid thread ID. */
-#ifdefined(VGO_freebsd) || defined(VGO_dragonfly)
+#if defined(VGO_freebsd) || defined(VGO_dragonfly)
   pthread_detach((pthread_t)12345);
 #else
   pthread_detach((pthread_t)((uintptr_t)thread + 8));
