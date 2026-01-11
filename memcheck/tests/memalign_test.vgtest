@@ -1,2 +1,3 @@
+prereq: ! ../../tests/os_test dragonfly
 prog: memalign_test
 vgopts: -q

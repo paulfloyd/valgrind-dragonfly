@@ -43,3 +43,17 @@
 	#fun:uname
 }
 
+{
+   <insert_a_suppression_name_here>
+   Helgrind:Race
+   ...
+   fun:exit
+}
+
+{
+   <insert_a_suppression_name_here>
+   Helgrind:Race
+   ...
+   obj:/usr/lib/thread/libthread_xu.so.2
+}
+
