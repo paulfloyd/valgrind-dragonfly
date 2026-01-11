@@ -581,15 +581,15 @@ extern int * __error(void) __attribute__((weak));
  #endif
 
 #elif defined(VGO_dragonfly)
- // operator new(unsigned, std::nothrow_t const&), GNU mangling
+ // operator new(unsigned int, std::align_val_t)
  #if VG_WORDSIZE == 4
-  ALLOC_or_NULL(VG_Z_LIBSTDCXX_SONAME, _ZnwjRKSt9nothrow_t,  __builtin_new);
-  ALLOC_or_NULL(SO_SYN_MALLOC,         _ZnwjRKSt9nothrow_t,  __builtin_new);
+  ALLOC_or_BOMB_ALIGNED(VG_Z_LIBSTDCXX_SONAME, _ZnwjSt11align_val_t, __builtin_new_aligned, NewAligned);
+  ALLOC_or_BOMB_ALIGNED(SO_SYN_MALLOC,         _ZnwjSt11align_val_t, __builtin_new_aligned, NewAligned);
  #endif
- // operator new(unsigned long, std::nothrow_t const&), GNU mangling
+ // operator new(unsigned long, std::align_val_t)
  #if VG_WORDSIZE == 8
-  ALLOC_or_NULL(VG_Z_LIBSTDCXX_SONAME, _ZnwmRKSt9nothrow_t,  __builtin_new);
-  ALLOC_or_NULL(SO_SYN_MALLOC,         _ZnwjRKSt9nothrow_t,  __builtin_new);
+  ALLOC_or_BOMB_ALIGNED(VG_Z_LIBSTDCXX_SONAME, _ZnwmSt11align_val_t, __builtin_new_aligned, NewAligned);
+  ALLOC_or_BOMB_ALIGNED(SO_SYN_MALLOC,         _ZnwmSt11align_val_t, __builtin_new_aligned, NewAligned);
  #endif
 
 #elif defined(VGO_darwin)
@@ -821,15 +821,15 @@ extern int * __error(void) __attribute__((weak));
  #endif
 
 #elif defined(VGO_dragonfly)
- // operator new[](unsigned, std::nothrow_t const&), GNU mangling
+ // operator new[](unsigned int, std::align_val_t)
  #if VG_WORDSIZE == 4
-  ALLOC_or_NULL(VG_Z_LIBSTDCXX_SONAME, _ZnajRKSt9nothrow_t, __builtin_vec_new );
-  ALLOC_or_NULL(SO_SYN_MALLOC,         _ZnajRKSt9nothrow_t, __builtin_vec_new );
+  ALLOC_or_BOMB_ALIGNED(VG_Z_LIBSTDCXX_SONAME, _ZnajSt11align_val_t, __builtin_vec_new_aligned, VecNewAligned );
+  ALLOC_or_BOMB_ALIGNED(SO_SYN_MALLOC,         _ZnajSt11align_val_t, __builtin_vec_new_aligned, VecNewAligned );
  #endif
- // operator new[](unsigned long, std::nothrow_t const&), GNU mangling
+ // operator new[](unsigned long, std::align_val_t)
  #if VG_WORDSIZE == 8
-  ALLOC_or_NULL(VG_Z_LIBSTDCXX_SONAME, _ZnamRKSt9nothrow_t, __builtin_vec_new );
-  ALLOC_or_NULL(SO_SYN_MALLOC,         _ZnajRKSt9nothrow_t, __builtin_vec_new );
+  ALLOC_or_BOMB_ALIGNED(VG_Z_LIBSTDCXX_SONAME, _ZnamSt11align_val_t, __builtin_vec_new_aligned, VecNewAligned );
+  ALLOC_or_BOMB_ALIGNED(SO_SYN_MALLOC,         _ZnamSt11align_val_t, __builtin_vec_new_aligned, VecNewAligned );
  #endif
 
 #elif defined(VGO_darwin)
@@ -1154,6 +1154,15 @@ extern int * __error(void) __attribute__((weak));
  DELETE(VG_Z_LIBCXX_SONAME,     _ZdlPv,               __builtin_delete, DeleteDefault  );
  DELETE(SO_SYN_MALLOC,          _ZdlPv,               __builtin_delete, DeleteDefault  );
 
+#elif defined(VGO_dragonfly)
+ DELETE(VG_Z_LIBSTDCXX_SONAME,  _ZdlPv,               __builtin_delete, DeleteDefault );
+ DELETE(SO_SYN_MALLOC,          _ZdlPv,               __builtin_delete, DeleteDefault );
+
+#elif defined(VGO_darwin)
+ // operator delete(void*)
+ DELETE(VG_Z_LIBSTDCXX_SONAME,  _ZdlPv,               __builtin_delete, DeleteDefault  );
+ DELETE(VG_Z_LIBCXX_SONAME,     _ZdlPv,               __builtin_delete, DeleteDefault  );
+ DELETE(SO_SYN_MALLOC,          _ZdlPv,               __builtin_delete, DeleteDefault  );
 #elif defined(VGO_solaris)
  // operator delete(void*)
  DELETE(VG_Z_LIBSTDCXX_SONAME,  _ZdlPv,               __builtin_delete, DeleteDefault  );
@@ -1208,8 +1217,15 @@ extern int * __error(void) __attribute__((weak));
 #endif
 
 #elif defined(VGO_dragonfly)
- FREE(VG_Z_LIBSTDCXX_SONAME,  _ZdlPv,               __builtin_delete );
- FREE(SO_SYN_MALLOC,          _ZdlPv,               __builtin_delete );
+ // operator delete(void*, unsigned int)
+#if __SIZEOF_SIZE_T__ == 4
+ DELETE_SIZED(VG_Z_LIBSTDCXX_SONAME,  _ZdlPvj,               __builtin_delete, DeleteSized );
+ DELETE_SIZED(SO_SYN_MALLOC,          _ZdlPvj,               __builtin_delete, DeleteSized );
+#elif __SIZEOF_SIZE_T__ == 8
+ // operator delete(void*, unsigned long)
+ DELETE_SIZED(VG_Z_LIBSTDCXX_SONAME,  _ZdlPvm,               __builtin_delete, DeleteSized );
+ DELETE_SIZED(SO_SYN_MALLOC,          _ZdlPvm,               __builtin_delete, DeleteSized );
+#endif
 
 #elif defined(VGO_darwin)
  // both 32bit and 64bit
@@ -1354,9 +1370,9 @@ extern int * __error(void) __attribute__((weak));
  DELETE(SO_SYN_MALLOC,         _ZdlPvRKSt9nothrow_t,  __builtin_delete, DeleteDefault );
 
 #elif defined(VGO_dragonfly)
- // operator delete(void*, std::nothrow_t const&), GNU mangling
- FREE(VG_Z_LIBSTDCXX_SONAME, _ZdlPvRKSt9nothrow_t,  __builtin_delete );
- FREE(SO_SYN_MALLOC,         _ZdlPvRKSt9nothrow_t,  __builtin_delete );
+ // operator delete(void*, std::nothrow_t const&)
+ DELETE(VG_Z_LIBSTDCXX_SONAME, _ZdlPvRKSt9nothrow_t,  __builtin_delete, DeleteDefault );
+ DELETE(SO_SYN_MALLOC,         _ZdlPvRKSt9nothrow_t,  __builtin_delete, DeleteDefault );
 
 #elif defined(VGO_darwin)
  // operator delete(void*, std::nothrow_t const&)
@@ -1425,9 +1441,9 @@ extern int * __error(void) __attribute__((weak));
  DELETE(SO_SYN_MALLOC,          _ZdaPv,               __builtin_vec_delete, VecDeleteDefault );
 
 #elif defined(VGO_dragonfly)
- // operator delete[](void*), GNU mangling
- FREE(VG_Z_LIBSTDCXX_SONAME,  _ZdaPv,               __builtin_vec_delete );
- FREE(SO_SYN_MALLOC,          _ZdaPv,               __builtin_vec_delete );
+ // operator delete[](void*)
+ DELETE(VG_Z_LIBSTDCXX_SONAME,  _ZdaPv,               __builtin_vec_delete, VecDeleteDefault );
+ DELETE(SO_SYN_MALLOC,          _ZdaPv,               __builtin_vec_delete, VecDeleteDefault );
 
 #elif defined(VGO_darwin)
  DELETE(VG_Z_LIBSTDCXX_SONAME,  _ZdaPv,               __builtin_vec_delete, VecDeleteDefault );
@@ -1578,9 +1594,9 @@ extern int * __error(void) __attribute__((weak));
  DELETE(SO_SYN_MALLOC,          _ZdaPvRKSt9nothrow_t, __builtin_vec_delete, VecDeleteDefault );
 
 #elif defined(VGO_dragonfly)
- // operator delete[](void*, std::nothrow_t const&), GNU mangling
- FREE(VG_Z_LIBSTDCXX_SONAME,  _ZdaPvRKSt9nothrow_t, __builtin_vec_delete );
- FREE(SO_SYN_MALLOC,          _ZdaPvRKSt9nothrow_t, __builtin_vec_delete );
+ // operator delete[](void*, std::nothrow_t const&)
+ DELETE(VG_Z_LIBSTDCXX_SONAME,  _ZdaPvRKSt9nothrow_t, __builtin_vec_delete, VecDeleteDefault );
+ DELETE(SO_SYN_MALLOC,          _ZdaPvRKSt9nothrow_t, __builtin_vec_delete, VecDeleteDefault );
 
 #elif defined(VGO_darwin)
  // operator delete[](void*, std::nothrow_t const&)
