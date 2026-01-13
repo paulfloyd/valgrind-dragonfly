@@ -67,6 +67,9 @@ sed '/by 0x........: close (in \/...libc...)/d' |
 sed '/by 0x........: creat (in \/...libc...)/d' |
 sed '/by 0x........: write (in \/...libc...)/d' |
 
+# DragonFlyBSD
+sed 's/__sys_//' |
+
 # Stack traces showing where fds were created have lots of variations:
 # different numbers of entries, line numbers or not depending on whether
 # libc debug info is present, 'main' vs. '(below main)', etc.  
