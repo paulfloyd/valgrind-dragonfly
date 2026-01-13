@@ -27,7 +27,7 @@
    The GNU General Public License is contained in the file COPYING.
 */
 
-#if defined(VGO_linux) || defined(VGO_solaris) || defined(VGO_freebsd)|| defined(VGO_dragonfly)
+#if defined(VGO_linux) || defined(VGO_solaris) || defined(VGO_freebsd) || defined(VGO_dragonfly)
 
 #include "pub_core_basics.h"
 #include "pub_core_vki.h"
@@ -1793,7 +1793,7 @@ static HChar* readlink_path (const HChar *path)
     || defined(VGP_riscv64_linux)
       res = VG_(do_syscall4)(__NR_readlinkat, VKI_AT_FDCWD,
                                               (UWord)path, (UWord)buf, bufsiz);
-#elif defined(VGO_linux) || defined(VGO_darwin) || defined(VGO_freebsd)|| defined(VGO_dragonfly)
+#elif defined(VGO_linux) || defined(VGO_darwin) || defined(VGO_freebsd) || defined(VGO_dragonfly)
       res = VG_(do_syscall3)(__NR_readlink, (UWord)path, (UWord)buf, bufsiz);
 #elif defined(VGO_solaris)
       res = VG_(do_syscall4)(__NR_readlinkat, VKI_AT_FDCWD, (UWord)path,
@@ -4010,7 +4010,7 @@ Bool ML_(check_elf_and_get_rw_loads) ( Int fd, const HChar* filename,
 
 
 
-#endif // defined(VGO_linux) || defined(VGO_solaris) || defined(VGO_freebsd)|| defined(VGO_dragonfly)
+#endif // defined(VGO_linux) || defined(VGO_solaris) || defined(VGO_freebsd) || defined(VGO_dragonfly)
 
 /*--------------------------------------------------------------------*/
 /*--- end                                                          ---*/

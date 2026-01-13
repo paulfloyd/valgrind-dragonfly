@@ -57,3 +57,9 @@
    obj:/usr/lib/thread/libthread_xu.so.2
 }
 
+{
+   <insert_a_suppression_name_here>
+   Helgrind:Race
+   fun:_ZN9smart_ptrI7counterE3setEPS0_P11AtomicInt32
+}
+

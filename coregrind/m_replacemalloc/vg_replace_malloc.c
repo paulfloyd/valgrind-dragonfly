@@ -646,6 +646,18 @@ extern int * __error(void) __attribute__((weak));
   ALLOC_or_NULL(SO_SYN_MALLOC,         _ZnwmRKSt9nothrow_t,  __builtin_new);
  #endif
 
+#elif defined(VGO_dragonfly)
+ // operator new(unsigned, std::nothrow_t const&)
+ #if VG_WORDSIZE == 4
+  ALLOC_or_NULL(VG_Z_LIBSTDCXX_SONAME, _ZnwjRKSt9nothrow_t,  __builtin_new);
+  ALLOC_or_NULL(SO_SYN_MALLOC,         _ZnwjRKSt9nothrow_t,  __builtin_new);
+ #endif
+ // operator new(unsigned long, std::nothrow_t const&)
+ #if VG_WORDSIZE == 8
+  ALLOC_or_NULL(VG_Z_LIBSTDCXX_SONAME, _ZnwmRKSt9nothrow_t,  __builtin_new);
+  ALLOC_or_NULL(SO_SYN_MALLOC,         _ZnwmRKSt9nothrow_t,  __builtin_new);
+ #endif
+
 #elif defined(VGO_darwin)
  // both 32bit and 64bit
  // operator new(unsigned long, std::nothrow_t const&)
@@ -696,6 +708,18 @@ extern int * __error(void) __attribute__((weak));
  #if VG_WORDSIZE == 8
   ALLOC_or_NULL_ALIGNED(VG_Z_LIBSTDCXX_SONAME, _ZnwmSt11align_val_tRKSt9nothrow_t,  __builtin_new_aligned, NewAligned);
   ALLOC_or_NULL_ALIGNED(VG_Z_LIBCXX_SONAME,    _ZnwmSt11align_val_tRKSt9nothrow_t,  __builtin_new_aligned, NewAligned);
+  ALLOC_or_NULL_ALIGNED(SO_SYN_MALLOC,         _ZnwmSt11align_val_tRKSt9nothrow_t,  __builtin_new_aligned, NewAligned);
+ #endif
+
+#elif defined(VGO_dragonfly)
+ // operator new(unsigned int, std::align_val_t, std::nothrow_t const&)
+ #if VG_WORDSIZE == 4
+  ALLOC_or_NULL_ALIGNED(VG_Z_LIBSTDCXX_SONAME, _ZnwjSt11align_val_tRKSt9nothrow_t,  __builtin_new_aligned, NewAligned);
+  ALLOC_or_NULL_ALIGNED(SO_SYN_MALLOC,         _ZnwjSt11align_val_tRKSt9nothrow_t,  __builtin_new_aligned, NewAligned);
+ #endif
+ // operator new(unsigned long, std::align_val_t, std::nothrow_t const&)
+ #if VG_WORDSIZE == 8
+  ALLOC_or_NULL_ALIGNED(VG_Z_LIBSTDCXX_SONAME, _ZnwmSt11align_val_tRKSt9nothrow_t,  __builtin_new_aligned, NewAligned);
   ALLOC_or_NULL_ALIGNED(SO_SYN_MALLOC,         _ZnwmSt11align_val_tRKSt9nothrow_t,  __builtin_new_aligned, NewAligned);
  #endif
 
@@ -887,6 +911,18 @@ extern int * __error(void) __attribute__((weak));
   ALLOC_or_NULL(SO_SYN_MALLOC,         _ZnamRKSt9nothrow_t, __builtin_vec_new );
  #endif
 
+#elif defined(VGO_dragonfly)
+ // operator new[](unsigned, std::nothrow_t const&)
+ #if VG_WORDSIZE == 4
+  ALLOC_or_NULL(VG_Z_LIBSTDCXX_SONAME, _ZnajRKSt9nothrow_t, __builtin_vec_new );
+  ALLOC_or_NULL(SO_SYN_MALLOC,         _ZnajRKSt9nothrow_t, __builtin_vec_new );
+ #endif
+ // operator new[](unsigned long, std::nothrow_t const&)
+ #if VG_WORDSIZE == 8
+  ALLOC_or_NULL(VG_Z_LIBSTDCXX_SONAME, _ZnamRKSt9nothrow_t, __builtin_vec_new );
+  ALLOC_or_NULL(SO_SYN_MALLOC,         _ZnamRKSt9nothrow_t, __builtin_vec_new );
+ #endif
+
 #elif defined(VGO_darwin)
  // both 32bit and 64bit
  // operator new[](unsigned long, std::nothrow_t const&)
@@ -937,6 +973,18 @@ extern int * __error(void) __attribute__((weak));
  #if VG_WORDSIZE == 8
   ALLOC_or_NULL_ALIGNED(VG_Z_LIBSTDCXX_SONAME, _ZnamSt11align_val_tRKSt9nothrow_t, __builtin_vec_new_aligned, VecNewAligned );
   ALLOC_or_NULL_ALIGNED(VG_Z_LIBCXX_SONAME,    _ZnamSt11align_val_tRKSt9nothrow_t, __builtin_vec_new_aligned, VecNewAligned );
+  ALLOC_or_NULL_ALIGNED(SO_SYN_MALLOC,         _ZnamSt11align_val_tRKSt9nothrow_t, __builtin_vec_new_aligned, VecNewAligned );
+ #endif
+
+#elif defined(VGO_dragonfly)
+ // operator new[](unsigned int, std::align_val_t, std::nothrow_t const&)
+ #if VG_WORDSIZE == 4
+  ALLOC_or_NULL_ALIGNED(VG_Z_LIBSTDCXX_SONAME, _ZnajSt11align_val_tRKSt9nothrow_t, __builtin_vec_new_aligned, VecNewAligned );
+  ALLOC_or_NULL_ALIGNED(SO_SYN_MALLOC,         _ZnajSt11align_val_tRKSt9nothrow_t, __builtin_vec_new_aligned, VecNewAligned );
+ #endif
+ // operator new[](unsigned long, std::align_val_t, std::nothrow_t const&)
+ #if VG_WORDSIZE == 8
+  ALLOC_or_NULL_ALIGNED(VG_Z_LIBSTDCXX_SONAME, _ZnamSt11align_val_tRKSt9nothrow_t, __builtin_vec_new_aligned, VecNewAligned );
   ALLOC_or_NULL_ALIGNED(SO_SYN_MALLOC,         _ZnamSt11align_val_tRKSt9nothrow_t, __builtin_vec_new_aligned, VecNewAligned );
  #endif
 
@@ -1324,6 +1372,21 @@ extern int * __error(void) __attribute__((weak));
  DELETE_SIZED_ALIGNED(SO_SYN_MALLOC,          _ZdlPvmSt11align_val_t,               __builtin_delete_aligned, DeleteSizedAligned );
 #endif
 
+#elif defined(VGO_dragonfly)
+ // operator delete(void*, std::align_val_t)
+ DELETE_ALIGNED(VG_Z_LIBSTDCXX_SONAME,  _ZdlPvSt11align_val_t, __builtin_delete_aligned, DeleteAligned );
+ DELETE_ALIGNED(SO_SYN_MALLOC,          _ZdlPvSt11align_val_t, __builtin_delete_aligned, DeleteAligned );
+
+ // operator delete(void*, unsigned int, std::align_val_t)
+#if __SIZEOF_SIZE_T__ == 4
+ DELETE_SIZED_ALIGNED(VG_Z_LIBSTDCXX_SONAME,  _ZdlPvjSt11align_val_t,               __builtin_delete_aligned, DeleteSizedAligned );
+ DELETE_SIZED_ALIGNED(SO_SYN_MALLOC,          _ZdlPvjSt11align_val_t,               __builtin_delete_aligned, DeleteSizedAligned );
+ // operator delete(void*, unsigned long, std::align_val_t)
+#elif __SIZEOF_SIZE_T__ == 8
+ DELETE_SIZED_ALIGNED(VG_Z_LIBSTDCXX_SONAME,  _ZdlPvmSt11align_val_t,               __builtin_delete_aligned, DeleteSizedAligned );
+ DELETE_SIZED_ALIGNED(SO_SYN_MALLOC,          _ZdlPvmSt11align_val_t,               __builtin_delete_aligned, DeleteSizedAligned );
+#endif
+
 #elif defined(VGO_darwin)
 
  // operator delete(void*, std::align_val_t)
@@ -1402,6 +1465,11 @@ extern int * __error(void) __attribute__((weak));
  // operator delete(void*, std::align_val_t, std::nothrow_t const&)
  DELETE_ALIGNED(VG_Z_LIBSTDCXX_SONAME, _ZdlPvSt11align_val_tRKSt9nothrow_t,  __builtin_delete_aligned, DeleteAligned );
  DELETE_ALIGNED(VG_Z_LIBCXX_SONAME,    _ZdlPvSt11align_val_tRKSt9nothrow_t,  __builtin_delete_aligned, DeleteAligned );
+ DELETE_ALIGNED(SO_SYN_MALLOC,         _ZdlPvSt11align_val_tRKSt9nothrow_t,  __builtin_delete_aligned, DeleteAligned );
+
+#elif defined(VGO_dragonfly)
+ // operator delete(void*, std::align_val_t, std::nothrow_t const&)
+ DELETE_ALIGNED(VG_Z_LIBSTDCXX_SONAME, _ZdlPvSt11align_val_tRKSt9nothrow_t,  __builtin_delete_aligned, DeleteAligned );
  DELETE_ALIGNED(SO_SYN_MALLOC,         _ZdlPvSt11align_val_tRKSt9nothrow_t,  __builtin_delete_aligned, DeleteAligned );
 
 #elif defined(VGO_darwin)
@@ -1486,6 +1554,16 @@ extern int * __error(void) __attribute__((weak));
   DELETE_SIZED(SO_SYN_MALLOC,          _ZdaPvm,              __builtin_vec_delete, VecDeleteSized );
 #endif
 
+#elif defined(VGO_dragonfly)
+ // operator delete[](void*, unsigned int)
+  #if __SIZEOF_SIZE_T__ == 4
+  DELETE_SIZED(VG_Z_LIBSTDCXX_SONAME,  _ZdaPvj,              __builtin_vec_delete, VecDeleteSized );
+  DELETE_SIZED(SO_SYN_MALLOC,          _ZdaPvj,              __builtin_vec_delete, VecDeleteSized );
+ #elif __SIZEOF_SIZE_T__ == 8
+  DELETE_SIZED(VG_Z_LIBSTDCXX_SONAME,  _ZdaPvm,              __builtin_vec_delete, VecDeleteSized );
+  DELETE_SIZED(SO_SYN_MALLOC,          _ZdaPvm,              __builtin_vec_delete, VecDeleteSized );
+#endif
+
 #elif defined(VGO_darwin)
 
   // both 32bit and 64bit
@@ -1544,6 +1622,21 @@ extern int * __error(void) __attribute__((weak));
  #elif __SIZEOF_SIZE_T__ == 8
  DELETE_SIZED_ALIGNED(VG_Z_LIBSTDCXX_SONAME,  _ZdaPvmSt11align_val_t, __builtin_vec_delete_aligned, VecDeleteSizedAligned );
  DELETE_SIZED_ALIGNED(VG_Z_LIBCXX_SONAME,     _ZdaPvmSt11align_val_t, __builtin_vec_delete_aligned, VecDeleteSizedAligned );
+ DELETE_SIZED_ALIGNED(SO_SYN_MALLOC,          _ZdaPvmSt11align_val_t, __builtin_vec_delete_aligned, VecDeleteSizedAligned );
+#endif
+
+#elif defined(VGO_dragonfly)
+ // operator delete[](void*, std::align_val_t)
+ DELETE_ALIGNED(VG_Z_LIBSTDCXX_SONAME,  _ZdaPvSt11align_val_t, __builtin_vec_delete_aligned, VecDeleteAligned );
+ DELETE_ALIGNED(SO_SYN_MALLOC,          _ZdaPvSt11align_val_t, __builtin_vec_delete_aligned, VecDeleteAligned );
+
+ // operator delete[](void*, unsigned int, std::align_val_t)
+ #if __SIZEOF_SIZE_T__ == 4
+ DELETE_SIZED_ALIGNED(VG_Z_LIBSTDCXX_SONAME,  _ZdaPvjSt11align_val_t, __builtin_vec_delete_aligned, VecDeleteSizedAligned );
+ DELETE_SIZED_ALIGNED(SO_SYN_MALLOC,          _ZdaPvjSt11align_val_t, __builtin_vec_delete_aligned, VecDeleteSizedAligned );
+ // operator delete[](void*, unsigned long, std::align_val_t)
+ #elif __SIZEOF_SIZE_T__ == 8
+ DELETE_SIZED_ALIGNED(VG_Z_LIBSTDCXX_SONAME,  _ZdaPvmSt11align_val_t, __builtin_vec_delete_aligned, VecDeleteSizedAligned );
  DELETE_SIZED_ALIGNED(SO_SYN_MALLOC,          _ZdaPvmSt11align_val_t, __builtin_vec_delete_aligned, VecDeleteSizedAligned );
 #endif
 
@@ -1626,6 +1719,11 @@ extern int * __error(void) __attribute__((weak));
  // operator delete[](void*, std::align_val_t, std::nothrow_t const&)
  DELETE_ALIGNED(VG_Z_LIBSTDCXX_SONAME,  _ZdaPvSt11align_val_tRKSt9nothrow_t, __builtin_vec_delete_aligned, VecDeleteAligned );
  DELETE_ALIGNED(VG_Z_LIBCXX_SONAME,     _ZdaPvSt11align_val_tRKSt9nothrow_t, __builtin_vec_delete_aligned, VecDeleteAligned );
+ DELETE_ALIGNED(SO_SYN_MALLOC,          _ZdaPvSt11align_val_tRKSt9nothrow_t, __builtin_vec_delete_aligned, VecDeleteAligned );
+
+#elif defined(VGO_dragonfly)
+ // operator delete[](void*, std::align_val_t, std::nothrow_t const&)
+ DELETE_ALIGNED(VG_Z_LIBSTDCXX_SONAME,  _ZdaPvSt11align_val_tRKSt9nothrow_t, __builtin_vec_delete_aligned, VecDeleteAligned );
  DELETE_ALIGNED(SO_SYN_MALLOC,          _ZdaPvSt11align_val_tRKSt9nothrow_t, __builtin_vec_delete_aligned, VecDeleteAligned );
 
 #elif defined(VGO_darwin)
@@ -2420,7 +2518,7 @@ extern int * __error(void) __attribute__((weak));
   ALIGNED_ALLOC(VG_Z_LIBC_SONAME, aligned_alloc);
   ALIGNED_ALLOC(SO_SYN_MALLOC,    aligned_alloc);
 
-#elif defined(VGO_freebsd)
+#elif defined(VGO_freebsd) || defined(VGO_dragonfly)
  ALIGNED_ALLOC(VG_Z_LIBC_SONAME, aligned_alloc);
  ALIGNED_ALLOC(SO_SYN_MALLOC,   aligned_alloc);
 

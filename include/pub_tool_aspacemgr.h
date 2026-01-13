@@ -114,6 +114,9 @@ typedef
       Bool    isFF;     // True --> is a fixed file mapping
       Bool    ignore_offset; // True --> we can't work out segment offset
 #endif
+#if defined(VGO_dragonfly)
+      Bool    isFF;     // True --> is a fixed file mapping
+#endif
    }
    NSegment;
 

@@ -285,10 +285,12 @@
 
 /* --- Soname of the pthreads library. --- */
 
-#if defined(VGO_linux) || defined(VGO_dragonfly)
+#if defined(VGO_linux)
 #  define  VG_Z_LIBPTHREAD_SONAME  libpthreadZdsoZd0     // libpthread.so.0
 #elif defined(VGO_freebsd)
 #  define  VG_Z_LIBPTHREAD_SONAME  libthrZdsoZa          // libthr.so*
+#elif defined(VGO_dragonfly)
+#  define  VG_Z_LIBPTHREAD_SONAME  libthreadZuxuZdsoZd2     // libthread_xu.so.2
 #elif defined(VGO_darwin)
 //#  define  VG_Z_LIBPTHREAD_SONAME  libSystemZdZaZddylib  // libSystem.*.dylib
 #  define  VG_Z_LIBPTHREAD_SONAME  libsystemZupthreadZddylib  // libSystem.*.dylib

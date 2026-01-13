@@ -2413,7 +2413,7 @@ static inline void my_exit ( int x )
       return NULL; \
  }
 
-#if defined(VGO_linux) || defined(VGO_freebsd) || defined(VGO_solaris)
+#if defined(VGO_linux) || defined(VGO_freebsd) || defined(VGO_solaris) || defined(VGO_dragonfly)
  MEMCCPY(VG_Z_LIBC_SONAME, memccpy)
 #elif defined(VGO_darwin)
  MEMCCPY(VG_Z_LIBSYSTEM_C_SONAME, __memccpy_chk)
@@ -2459,7 +2459,7 @@ static inline void my_exit ( int x )
      return dst_orig + (src - src_orig); \
   }
 
-#if defined(VGO_linux) || defined(VGO_freebsd) || defined(VGO_solaris)
+#if defined(VGO_linux) || defined(VGO_freebsd) || defined(VGO_solaris) || defined(VGO_dragonfly)
  WCPNCPY(VG_Z_LIBC_SONAME, wcpncpy)
 #elif defined(VGO_darwin)
  WCPNCPY(VG_Z_LIBSYSTEM_C_SONAME, wcpncpy)

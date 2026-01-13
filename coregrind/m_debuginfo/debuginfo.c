@@ -57,7 +57,7 @@
 #include "priv_tytypes.h"
 #include "priv_storage.h"
 #include "priv_readdwarf.h"
-#if defined(VGO_linux) || defined(VGO_solaris) || defined(VGO_freebsd)|| defined(VGO_dragonfly)
+#if defined(VGO_linux) || defined(VGO_solaris) || defined(VGO_freebsd) || defined(VGO_dragonfly)
 # include "priv_readelf.h"
 # include "priv_readdwarf3.h"
 #elif defined(VGO_darwin)
@@ -837,7 +837,7 @@ void VG_(di_initialise) ( void )
 /*---                                                        ---*/
 /*--------------------------------------------------------------*/
 
-#if defined(VGO_linux) || defined(VGO_darwin) || defined(VGO_solaris) || defined(VGO_freebsd)|| defined(VGO_dragonfly)
+#if defined(VGO_linux) || defined(VGO_darwin) || defined(VGO_solaris) || defined(VGO_freebsd) || defined(VGO_dragonfly)
 
 /* Helper (indirect) for di_notify_ACHIEVE_ACCEPT_STATE */
 static Bool overlaps_DebugInfoMappings ( const DebugInfoMapping* map1,
@@ -988,7 +988,7 @@ static ULong di_notify_ACHIEVE_ACCEPT_STATE ( struct _DebugInfo* di )
    truncate_DebugInfoMapping_overlaps( di, di->fsm.maps );
 
    /* And acquire new info. */
-#  if defined(VGO_linux) || defined(VGO_solaris) || defined(VGO_freebsd)|| defined(VGO_dragonfly)
+#  if defined(VGO_linux) || defined(VGO_solaris) || defined(VGO_freebsd) || defined(VGO_dragonfly)
    ok = ML_(read_elf_object)( di );
    if (ok)
       di->deferred = True;
@@ -1157,7 +1157,7 @@ ULong VG_(di_notify_mmap)( Addr a, Bool allow_SkFileV, Int use_fd )
 
    DebugInfo* di;
    Int        actual_fd, oflags;
-#if defined(VGO_freebsd)
+#if defined(VGO_freebsd) || defined(VGO_dragonfly)
    static Bool first_fixed_file = True;
 #endif
 
@@ -1326,7 +1326,7 @@ ULong VG_(di_notify_mmap)( Addr a, Bool allow_SkFileV, Int use_fd )
    if (!(is_rx_map || is_rw_map || is_ro_map))
       return 0;
 
-#if defined(VGO_freebsd)
+#if defined(VGO_freebsd) || defined(VGO_dragonfly)
    /* Ignore non-fixed read-only mappings.  The dynamic linker may be
     * mapping something for its own transient purposes. */
    if (!seg->isFF && is_ro_map) {
@@ -1882,7 +1882,7 @@ void VG_(di_notify_pdb_debuginfo)( Int fd_obj, Addr avma_obj,
    if (pdbname) ML_(dinfo_free)(pdbname);
 }
 
-#endif /* defined(VGO_linux) || defined(VGO_darwin) || defined(VGO_solaris) || defined(VGO_freebsd)|| defined(VGO_dragonfly) */
+#endif /* defined(VGO_linux) || defined(VGO_darwin) || defined(VGO_solaris) || defined(VGO_freebsd) || defined(VGO_dragonfly) */
 
 #if defined(VGO_darwin) && DARWIN_VERS >= DARWIN_11_00
 // Special version of VG_(di_notify_mmap) specifically to read debug info from the DYLD Shared Cache (DSC)
