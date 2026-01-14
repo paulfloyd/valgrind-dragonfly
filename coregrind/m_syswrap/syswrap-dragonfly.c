@@ -1397,6 +1397,8 @@ PRE(sys_fstat)
 {
    PRINT("sys_fstat ( %lu, %#lx )",ARG1,ARG2);
    PRE_REG_READ2(long, "fstat", unsigned long, fd, struct stat *, buf);
+   if ( !ML_(fd_allowed)(ARG1, "fstat", tid, False) )
+      SET_STATUS_Failure( VKI_EBADF );
    PRE_MEM_WRITE( "fstat(buf)", ARG2, sizeof(struct vki_stat) );
 }
 
@@ -1450,6 +1452,8 @@ PRE(sys_fpathconf)
 {
    PRINT("sys_fpathconf ( %lu, %lu )",ARG1,ARG2);
    PRE_REG_READ2(long, "fpathconf", int, fd, int, name);
+   if (!ML_(fd_allowed)(ARG1, "fpathconf", tid, False))
+      SET_STATUS_Failure(VKI_EBADF);
 }
 
 PRE(sys_lchmod)
@@ -1570,6 +1574,8 @@ PRE(sys_getdirentries)
    PRE_REG_READ3(long, "getdirentries",
                  unsigned int, fd, struct dirent *, dirp,
                  unsigned int, count);
+   if (!ML_(fd_allowed)(ARG1, "getdirentries", tid, False))
+      SET_STATUS_Failure(VKI_EBADF);
    PRE_MEM_WRITE( "getdirentries(dirp)", ARG2, ARG3 );
 }
 
@@ -1608,6 +1614,8 @@ PRE(sys_futimes)
 {
    PRINT("sys_lutimes ( %lu, %#lx )", ARG1,ARG2);
    PRE_REG_READ2(long, "futimes", int, fd, struct timeval *, tvp);
+   if (!ML_(fd_allowed)(ARG1, "futimes", tid, False))
+      SET_STATUS_Failure(VKI_EBADF);
    if (ARG2 != 0)
       PRE_MEM_READ( "futimes(tvp)", ARG2, sizeof(struct vki_timeval) );
 }
@@ -1616,6 +1624,8 @@ PRE(sys_futimens)
 {
    PRINT("sys_futimes ( %lu, %#lx )", ARG1, ARG2);
    PRE_REG_READ2(long, "futimes", int, fd, const struct timespec*, times);
+   if (!ML_(fd_allowed)(ARG1, "futimens", tid, False))
+      SET_STATUS_Failure(VKI_EBADF);
    if (ARG2 != 0)
       PRE_MEM_READ( "futimens(times)", ARG2, sizeof(struct vki_timespec) * 2);
 }
@@ -1652,8 +1662,10 @@ PRE(sys_kqueue)
 {
    PRINT("sys_kqueue ()");
 }
+
 POST(sys_kqueue)
 {
+   POST_newFd_RES;
    if (!ML_(fd_allowed)(RES, "kqueue", tid, True)) {
       VG_(close)(RES);
       SET_STATUS_Failure( VKI_EMFILE );
@@ -1820,6 +1832,8 @@ PRE(sys_fstatfs6)
    PRINT("sys_fstatfs6 ( %lu, %#lx )",ARG1,ARG2);
    PRE_REG_READ2(long, "fstatfs6",
                  unsigned int, fd, struct statfs *, buf);
+   if (!ML_(fd_allowed)(ARG1, "fstatfs6", tid, False))
+      SET_STATUS_Failure(VKI_EBADF);
    PRE_MEM_WRITE( "fstatfs6(buf)", ARG2, sizeof(struct vki_statfs6) );
 }
 
@@ -1924,6 +1938,8 @@ PRE(sys_extattr_set_file)
    PRE_REG_READ5(vki_ssize_t, "sys_extattr_set_file",
    		const char*, path, int, attrnamespace, const char*, attrname,
 		const void*, data, vki_size_t, nbytes);
+   if (!ML_(fd_allowed)(ARG1, "extattr_set_fd", tid, False))
+      SET_STATUS_Failure(VKI_EBADF
    PRE_MEM_RASCIIZ("sys_extattr_set_file(path)", ARG1);
    PRE_MEM_RASCIIZ("sys_extattr_set_file(attrname)", ARG3);
    PRE_MEM_READ("sys_extattr_set_file(data)", ARG4, ARG5);
@@ -1935,6 +1951,8 @@ PRE(sys_extattr_get_file)
    PRE_REG_READ5(vki_ssize_t, "sys_extattr_get_file",
    		const char*, path, int, attrnamespace, const char*, attrname,
 		void*, data, vki_size_t, nbytes);
+   if (!ML_(fd_allowed)(ARG1, "extattr_get_fd", tid, False))
+      SET_STATUS_Failure(VKI_EBADF);
    PRE_MEM_RASCIIZ("sys_extattr_get_file(path)", ARG1);
    PRE_MEM_RASCIIZ("sys_extattr_get_file(attrname)", ARG3);
 }
@@ -1949,6 +1967,8 @@ PRE(sys_extattr_delete_file)
    PRINT("sys_extattr_delete_file ( %s, %lu, %s )", (HChar*)ARG1, ARG2, (HChar*)ARG3);
    PRE_REG_READ3(vki_ssize_t, "sys_extattr_delete_file",
    		const char*, path, int, attrnamespace, const char*, attrname);
+   if (!ML_(fd_allowed)(ARG1, "extattr_delete_fd", tid, False))
+      SET_STATUS_Failure(VKI_EBADF);
    PRE_MEM_RASCIIZ("sys_extattr_delete_file(path)", ARG1);
    PRE_MEM_RASCIIZ("sys_extattr_delete_file(attrname)", ARG3);
 }
@@ -2029,20 +2049,57 @@ PRE(sys_aio_error)
 
 PRE(sys_aio_cancel)
 {
-	PRINT("sys_aio_cancel ( %ld, %p )", SARG1, (void*)ARG2);
-	PRE_REG_READ2(long, "aio_cancel", int, filedes, const struct vki_aiocb*, iocb);
+   PRINT("sys_aio_cancel ( %" FMT_REGWORD "d, %#" FMT_REGWORD "x )", SARG1, ARG2);
+   PRE_REG_READ2(int, "aio_cancel", int, fildes, struct iocb *, iocb);
+   if (ARG2) {
+      PRE_MEM_READ("aio_cancel(iocb)", ARG2, sizeof(struct vki_aiocb));
+   }
+   if (!ML_(fd_allowed)(ARG1, "aio_cancel", tid, False))
+      SET_STATUS_Failure(VKI_EBADF);
+   if (ARG2) {
+      if (ML_(safe_to_deref)((struct vki_aiocb *)ARG2, sizeof(struct vki_aiocb))) {
+         // FIXME anything here?
+      } else {
+         SET_STATUS_Failure(VKI_EINVAL);
+      }
+   }
 }
 
 PRE(sys_aio_read)
 {
-	PRINT("sys_aio_read ( %p )", (void*)ARG1);
-	PRE_REG_READ1(long, "aio_read", struct vki_aiocb*, iocb);
+   PRINT("sys_aio_read ( %#" FMT_REGWORD "x )", ARG1);
+   PRE_REG_READ1(int, "aio_read", struct vki_aiocb *, iocb);
+   PRE_MEM_READ("aio_read(iocb)", ARG1, sizeof(struct vki_aiocb));
+   if (ML_(safe_to_deref)((struct vki_aiocb *)ARG1, sizeof(struct vki_aiocb))) {
+      struct vki_aiocb *iocb = (struct vki_aiocb *)ARG1;
+      if (!ML_(fd_allowed)(iocb->aio_fildes, "aio_read", tid, False)) {
+         SET_STATUS_Failure(VKI_EBADF);
+      } else {
+         PRE_MEM_WRITE("aio_read(aiocbp->aio_buf)",
+                       (Addr)iocb->aio_buf, iocb->aio_nbytes);
+      }
+   } else {
+      SET_STATUS_Failure(VKI_EINVAL);
+   }
 }
 
 PRE(sys_aio_write)
 {
-	PRINT("sys_aio_write ( %p )", (void*)ARG1);
-	PRE_REG_READ1(long, "aio_write", struct vki_aiocb*, iocb);
+{
+   PRINT("sys_aio_write ( %#" FMT_REGWORD "x )", ARG1);
+   PRE_REG_READ1(int, "aio_write", struct vki_aiocb *, iocb);
+   PRE_MEM_READ("aio_write(iocb)", ARG1, sizeof(struct vki_aiocb));
+   if (ML_(safe_to_deref)((struct vki_aiocb *)ARG1, sizeof(struct vki_aiocb))) {
+      struct vki_aiocb *iocb = (struct vki_aiocb *)ARG1;
+      if (!ML_(fd_allowed)(iocb->aio_fildes, "aio_write", tid, False)) {
+         SET_STATUS_Failure( VKI_EBADF );
+      } else {
+         PRE_MEM_READ("aio_write(iocb->aio_buf)",
+                      (Addr)iocb->aio_buf, iocb->aio_nbytes);
+      }
+   } else {
+      SET_STATUS_Failure(VKI_EINVAL);
+   }
 }
 
 PRE(sys_aio_return)
@@ -2268,9 +2325,11 @@ PRE(sys_mq_open)
                      (Addr)&attr->mq_msgsize, sizeof(attr->mq_msgsize) );
    }
 }
+
 POST(sys_mq_open)
 {
    vg_assert(SUCCESS);
+   POST_newFd_RES;
    if (!ML_(fd_allowed)(RES, "mq_open", tid, True)) {
       VG_(close)(RES);
       SET_STATUS_Failure( VKI_EMFILE );
@@ -2314,6 +2373,8 @@ PRE(sys_mq_timedreceive)
    PRE_REG_READ5(long, "mq_timedreceive",
    		vki_mqd_t, mqdes, char*, msg_ptr, vki_size_t, msg_len,
 		unsigned*, msg_prio, const struct vki_timespec*, abs_timeout);
+   if (!ML_(fd_allowed)(ARG1, "mq_timedreceive", tid, False)) {
+      SET_STATUS_Failure( VKI_EBADF );
    if (ARG5 != 0)
       PRE_MEM_READ("mq_timedreceive(abs_timeout)", ARG5, sizeof(struct vki_timespec));
 }
@@ -2343,6 +2404,8 @@ PRE(sys_mq_timedsend)
    PRE_REG_READ5(long, "mq_timedsend",
                  vki_mqd_t, mqdes, const char *, msg_ptr, vki_size_t, msg_len,
                  unsigned int, msg_prio, const struct timespec *, abs_timeout);
+   if (!ML_(fd_allowed)(ARG1, "mq_timedsend", tid, False)) {
+      SET_STATUS_Failure( VKI_EBADF );
    if (!ML_(fd_allowed)(ARG1, "mq_timedsend", tid, False)) {
       SET_STATUS_Failure( VKI_EBADF );
    } else {
@@ -3853,6 +3916,7 @@ PRE(sys_shm_open)
 POST(sys_shm_open)
 {
    vg_assert(SUCCESS);
+   POST_newFd_RES;
    if (!ML_(fd_allowed)(RES, "shm_open", tid, True)) {
       VG_(close)(RES);
       SET_STATUS_Failure( VKI_EMFILE );
@@ -4016,6 +4080,7 @@ PRE(sys_openat)
 POST(sys_openat)
 {
    vg_assert(SUCCESS);
+   POST_newFd_RES;
    if (!ML_(fd_allowed)(RES, "openat", tid, True)) {
       VG_(close)(RES);
       SET_STATUS_Failure( VKI_EMFILE );
@@ -4204,6 +4269,8 @@ PRE(sys___acl_get_fd)
    PRINT("sys___acl_get_fd ( %ld, %ld, %#lx )", SARG1,SARG2,ARG3);
    PRE_REG_READ3(long, "__acl_get_fd",
                  int, fd, int, acltype, struct vki_acl *, aclp);
+   if (!ML_(fd_allowed)(ARG1, "__acl_get_fd", tid, False))
+      SET_STATUS_Failure(VKI_EBADF);
    PRE_MEM_WRITE( "__acl_get_file(aclp)", ARG3, sizeof(struct vki_acl) );
 }
 
@@ -4220,6 +4287,8 @@ PRE(sys___acl_set_fd)
    PRINT("sys___acl_set_fd ( %ld, %ld, %#lx )", SARG1,SARG2,ARG3);
    PRE_REG_READ3(long, "__acl_set_fd",
                  int, fd, int, acltype, struct vki_acl *, aclp);
+   if (!ML_(fd_allowed)(ARG1, "__acl_set_fd", tid, False))
+      SET_STATUS_Failure(VKI_EBADF)
    PRE_MEM_READ( "__acl_get_file(aclp)", ARG3, sizeof(struct vki_acl) );
 }
 
@@ -4235,6 +4304,8 @@ PRE(sys___acl_delete_fd)
    PRINT("sys___acl_delete_fd ( %ld, %ld )", SARG1,SARG2);
    PRE_REG_READ2(long, "__acl_delete_fd",
                  int, fd, int, acltype);
+   if (!ML_(fd_allowed)(ARG1, "__acl_delete_fd", tid, False))
+      SET_STATUS_Failure(VKI_EBADF);
 }
 
 PRE(sys___acl_aclcheck_file)
@@ -4250,6 +4321,8 @@ PRE(sys___acl_aclcheck_fd)
    PRINT("sys___acl_aclcheck_fd ( %ld, %ld, %#lx )", SARG1,SARG2,ARG3);
    PRE_REG_READ3(long, "__acl_aclcheck_fd",
                  int, fd, int, acltype, struct vki_acl *, aclp);
+   if (!ML_(fd_allowed)(ARG1, "__acl_aclcheck_fd", tid, False))
+      SET_STATUS_Failure(VKI_EBADF);
    PRE_MEM_READ( "__acl_aclcheck_fd(aclp)", ARG3, sizeof(struct vki_acl) );
 }
 
@@ -4371,22 +4444,33 @@ PRE(sys_fcntl)
       I_die_here;
       break;
    }
+   if (!ML_(fd_allowed)(ARG1, "fcntl", tid, False))
+     SET_STATUS_Failure (VKI_EBADF);
 }
 
 POST(sys_fcntl)
 {
    vg_assert(SUCCESS);
    if (ARG2 == VKI_F_DUPFD) {
+      POST_newFd_RES;
       if (!ML_(fd_allowed)(RES, "fcntl(DUPFD)", tid, True)) {
          VG_(close)(RES);
          SET_STATUS_Failure( VKI_EMFILE );
       } else {
-         if (VG_(clo_track_fds))
+         if (VG_(clo_track_fds)) {
             ML_(record_fd_open_named)(tid, RES);
+         }
       }
-   }
-   else if (ARG2 == VKI_F_GETPATH && RES == 0) {
-      POST_MEM_WRITE(ARG3, VG_(strlen)((const HChar*)ARG3) + 1);
+   } else if (ARG2 == VKI_F_DUPFD_CLOEXEC) {
+      POST_newFd_RES;
+      if (!ML_(fd_allowed)(RES, "fcntl(DUPFD_CLOEXEC)", tid, True)) {
+         VG_(close)(RES);
+         SET_STATUS_Failure( VKI_EMFILE );
+      } else {
+         if (VG_(clo_track_fds)) {
+            ML_(record_fd_open_named)(tid, RES);
+         }
+      }
    }
 }
 
@@ -4398,6 +4482,8 @@ PRE(sys_ioctl)
    PRINT("sys_ioctl ( %ld, 0x%lx, %#lx )",SARG1,ARG2,ARG3);
    PRE_REG_READ3(long, "ioctl",
                  unsigned int, fd, unsigned int, request, unsigned long, arg);
+   if (!ML_(fd_allowed)(ARG1, "ioctl", tid, False))
+      SET_STATUS_Failure(VKI_EBADF);
 
 /* On Dragonfly, ALL ioctl's are IOR/IOW encoded.  Just use the default decoder */
    if (SimHintiS(SimHint_lax_ioctls, VG_(clo_sim_hints))) {
