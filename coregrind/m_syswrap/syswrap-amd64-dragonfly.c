@@ -510,7 +510,7 @@ PRE(sys_mmap)
    SysRes r;
 
    PRINT("sys_mmap ( %#lx, %lu, %ld, %ld, %ld, pad%ld, 0x%lx)",
-         ARG1, (UWord)ARG2, ARG3, ARG4, ARG5, ARG6, ARG7 );
+         ARG1, (UWord)ARG2, SARG3, SARG4, SARG5, SARG6, ARG7 );
    PRE_REG_READ7(long, "mmap",
                  char *, addr, unsigned long, len, int, prot,  int, flags,
                  int, fd,  int, pad, unsigned long, pos);
@@ -524,7 +524,7 @@ PRE(sys_mmap7)
    SysRes r;
 
    PRINT("sys_mmap7 ( %#lx, %lu, %ld, %ld, %ld, 0x%lx)",
-         ARG1, (UWord)ARG2, ARG3, ARG4, ARG5, ARG6 );
+         ARG1, (UWord)ARG2, SARG3, SARG4, SARG5, ARG6 );
    PRE_REG_READ6(long, "mmap",
                  char *, addr, unsigned long, len, int, prot,  int, flags,
                  int, fd,  unsigned long, pos);
@@ -535,24 +535,24 @@ PRE(sys_mmap7)
 
 PRE(sys_lseek)
 {
-   PRINT("sys_lseek ( %ld, 0x%lx, %#lx, %ld )", ARG1,ARG2,ARG3,ARG4);
+   PRINT("sys_lseek ( %ld, 0x%lx, %#lx, %ld )", SARG1,ARG2,ARG3,SARG4);
    PRE_REG_READ4(long, "lseek",
                  unsigned int, fd, int, pad, unsigned long, offset,
-                 unsigned int, whence);
+                 int, whence);
 }
 
 PRE(sys_lseek7)
 {
-   PRINT("sys_lseek ( %ld, 0x%lx, %ld )", ARG1,ARG2,ARG3);
+   PRINT("sys_lseek ( %ld, 0x%lx, %ld )", SARG1,ARG2,SARG3);
    PRE_REG_READ3(long, "lseek",
                  unsigned int, fd, unsigned long, offset,
-                 unsigned int, whence);
+                 int, whence);
 }
 
 PRE(sys_pread)
 {
    *flags |= SfMayBlock;
-   PRINT("sys_read ( %ld, %#lx, %lu, %lu, %lu )", ARG1, ARG2, ARG3, ARG4, ARG5);
+   PRINT("sys_read ( %ld, %#lx, %lu, %lu, %lu )", SARG1, ARG2, ARG3, ARG4, ARG5);
    PRE_REG_READ5(ssize_t, "read",
                  unsigned int, fd, char *, buf, vki_size_t, count,
                  int, pad, unsigned long, off);
@@ -572,7 +572,7 @@ POST(sys_pread)
 PRE(sys_preadv)
 {
    *flags |= SfMayBlock;
-   PRINT("sys_extpreadv ( %ld, %#lx, %lu, %lu, %lu )", ARG1, ARG2, ARG3, ARG4, ARG5);
+   PRINT("sys_extpreadv ( %ld, %#lx, %ld, %ld, %lu )", SARG1, ARG2, SARG3, SARG4, ARG5);
    PRE_REG_READ5(ssize_t, "extpreadv",
                  int, fd, struct vki_iovec*, iov, int, iovcnt, int, flags,
 				 vki_off_t, offset);
@@ -598,7 +598,7 @@ POST(sys_preadv)
 PRE(sys_pread7)
 {
    *flags |= SfMayBlock;
-   PRINT("sys_read ( %ld, %#lx, %lu, %lu )", ARG1, ARG2, ARG3, ARG4);
+   PRINT("sys_read ( %ld, %#lx, %lu, %lu )", SARG1, ARG2, ARG3, ARG4);
    PRE_REG_READ4(ssize_t, "read",
                  unsigned int, fd, char *, buf, vki_size_t, count,
                  unsigned long, off);

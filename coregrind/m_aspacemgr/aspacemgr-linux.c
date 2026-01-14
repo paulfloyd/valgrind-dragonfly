@@ -4708,8 +4708,9 @@ static void parse_procselfmaps (
    )
 {
     SysRes res;
-    Addr start, end = 0, vm_backing;
-    SizeT len;
+    Addr start;
+    Addr end = 0;
+    //Addr vm_backing;
     UInt prot, mode;
     ULong dev, ino;
     Off64T offset;
@@ -4720,7 +4721,7 @@ static void parse_procselfmaps (
     mapfd = sr_Res(res);
 
     /* no err handling */
-    while (read = ML_(am_read)(mapfd, buf, PROCMAP_LINE)) {
+    while ((read = ML_(am_read)(mapfd, buf, PROCMAP_LINE))) {
 	ptr = buf;
 	prot = dev = ino = offset = 0;
 
@@ -4734,7 +4735,7 @@ static void parse_procselfmaps (
 	ptr = VG_(strchr)(ptr, ' ') + 1;
 	ptr = VG_(strchr)(ptr, '0');
 	/* probably useless */
-	vm_backing = strtoul16(ptr, 0);
+	//vm_backing = strtoul16(ptr, 0);
 	ptr = VG_(strchr)(ptr, ' ') + 1;
 	
 	if (ptr[0] == 'r')

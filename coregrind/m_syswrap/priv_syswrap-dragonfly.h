@@ -289,6 +289,7 @@ DECL_TEMPLATE(dragonfly, sys_ppoll);
 DECL_TEMPLATE(dragonfly, sys_procctl);
 
 // FIXME PJF what are the syscall numbers? and what order?
+DECL_TEMPLATE(dragonfly, sys_lchflags); // 391
 DECL_TEMPLATE(dragonfly, sys_varsym_set); // 450
 DECL_TEMPLATE(dragonfly, sys_varsym_get); // 451
 DECL_TEMPLATE(dragonfly, sys_varsym_list); // 452
@@ -305,9 +306,11 @@ DECL_TEMPLATE(dragonfly, sys_lwp_create); // 495
 DECL_TEMPLATE(dragonfly, sys_lwp_gettid); // 496
 DECL_TEMPLATE(dragonfly, sys_lwp_kill); // 497
 DECL_TEMPLATE(dragonfly, sys_lwp_rtprio); // 498
+DECL_TEMPLATE(dragonfly, sys_pselect); // 499
 DECL_TEMPLATE(dragonfly, sys_mq_close); // 511
 DECL_TEMPLATE(dragonfly, sys_swapoff); // 529
 DECL_TEMPLATE(dragonfly, sys_lpathconf); // 533
+DECL_TEMPLATE(dragonfly, sys_chflagsat); // 537
 DECL_TEMPLATE(dragonfly, sys_utimensat); // 539
 DECL_TEMPLATE(dragonfly, sys_futimens); // 540
 DECL_TEMPLATE(dragonfly, sys_accept4); // 541
