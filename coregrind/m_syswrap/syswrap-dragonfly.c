@@ -1939,7 +1939,7 @@ PRE(sys_extattr_set_file)
    		const char*, path, int, attrnamespace, const char*, attrname,
 		const void*, data, vki_size_t, nbytes);
    if (!ML_(fd_allowed)(ARG1, "extattr_set_fd", tid, False))
-      SET_STATUS_Failure(VKI_EBADF
+      SET_STATUS_Failure(VKI_EBADF);
    PRE_MEM_RASCIIZ("sys_extattr_set_file(path)", ARG1);
    PRE_MEM_RASCIIZ("sys_extattr_set_file(attrname)", ARG3);
    PRE_MEM_READ("sys_extattr_set_file(data)", ARG4, ARG5);
@@ -2084,7 +2084,6 @@ PRE(sys_aio_read)
 }
 
 PRE(sys_aio_write)
-{
 {
    PRINT("sys_aio_write ( %#" FMT_REGWORD "x )", ARG1);
    PRE_REG_READ1(int, "aio_write", struct vki_aiocb *, iocb);
@@ -2404,8 +2403,6 @@ PRE(sys_mq_timedsend)
    PRE_REG_READ5(long, "mq_timedsend",
                  vki_mqd_t, mqdes, const char *, msg_ptr, vki_size_t, msg_len,
                  unsigned int, msg_prio, const struct timespec *, abs_timeout);
-   if (!ML_(fd_allowed)(ARG1, "mq_timedsend", tid, False)) {
-      SET_STATUS_Failure( VKI_EBADF );
    if (!ML_(fd_allowed)(ARG1, "mq_timedsend", tid, False)) {
       SET_STATUS_Failure( VKI_EBADF );
    } else {
@@ -4288,7 +4285,7 @@ PRE(sys___acl_set_fd)
    PRE_REG_READ3(long, "__acl_set_fd",
                  int, fd, int, acltype, struct vki_acl *, aclp);
    if (!ML_(fd_allowed)(ARG1, "__acl_set_fd", tid, False))
-      SET_STATUS_Failure(VKI_EBADF)
+      SET_STATUS_Failure(VKI_EBADF);
    PRE_MEM_READ( "__acl_get_file(aclp)", ARG3, sizeof(struct vki_acl) );
 }
 
