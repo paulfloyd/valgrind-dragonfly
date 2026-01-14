@@ -288,6 +288,36 @@ DECL_TEMPLATE(dragonfly, sys_mq_receive);
 DECL_TEMPLATE(dragonfly, sys_ppoll);
 DECL_TEMPLATE(dragonfly, sys_procctl);
 
+// FIXME PJF what are the syscall numbers? and what order?
+DECL_TEMPLATE(dragonfly, sys_varsym_set); // 450
+DECL_TEMPLATE(dragonfly, sys_varsym_get); // 451
+DECL_TEMPLATE(dragonfly, sys_varsym_list); // 452
+DECL_TEMPLATE(dragonfly, sys_umtx_sleep); // 469
+DECL_TEMPLATE(dragonfly, sys_umtx_wakeup); // 470
+DECL_TEMPLATE(dragonfly, sys_set_tls_area); // 472
+DECL_TEMPLATE(dragonfly, sys_get_tls_area); // 473
+DECL_TEMPLATE(dragonfly, sys_closefrom); // 474
+DECL_TEMPLATE(dragonfly, sys_usched_set); // 481
+DECL_TEMPLATE(dragonfly, sys_extaccept); // 482
+DECL_TEMPLATE(dragonfly, sys_extconnect); // 483
+DECL_TEMPLATE(dragonfly, sys_extexit); // 494
+DECL_TEMPLATE(dragonfly, sys_lwp_create); // 495
+DECL_TEMPLATE(dragonfly, sys_lwp_gettid); // 496
+DECL_TEMPLATE(dragonfly, sys_lwp_kill); // 497
+DECL_TEMPLATE(dragonfly, sys_lwp_rtprio); // 498
+DECL_TEMPLATE(dragonfly, sys_mq_close); // 511
+DECL_TEMPLATE(dragonfly, sys_swapoff); // 529
+DECL_TEMPLATE(dragonfly, sys_lpathconf); // 533
+DECL_TEMPLATE(dragonfly, sys_utimensat); // 539
+DECL_TEMPLATE(dragonfly, sys_futimens); // 540
+DECL_TEMPLATE(dragonfly, sys_accept4); // 541
+DECL_TEMPLATE(dragonfly, sys_lwp_setname); // 542
+DECL_TEMPLATE(dragonfly, sys_lwp_setaffinity); // 544
+DECL_TEMPLATE(dragonfly, sys_lwp_getaffinity); // 545
+DECL_TEMPLATE(dragonfly, sys_lwp_create2); // 546
+DECL_TEMPLATE(dragonfly, sys_lwp_getname); // 549
+DECL_TEMPLATE(dragonfly, sys_realpath); // 551
+
 #endif   // __PRIV_SYSWRAP_DRAGONFLY_H
 
 /*--------------------------------------------------------------------*/
