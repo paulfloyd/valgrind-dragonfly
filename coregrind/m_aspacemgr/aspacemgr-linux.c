@@ -4753,6 +4753,7 @@ static void parse_procselfmaps (
 	    res = ML_(am_open)(ptr, VKI_O_RDONLY, 0);
 	    secfd = sr_Res(res);
 	    ML_(am_get_fd_d_i_m)(secfd, &dev, &ino, &mode);
+         ML_(am_close)(secfd);
 	}
 
 	/* afaik no way to get file offset information */
@@ -4764,6 +4765,7 @@ static void parse_procselfmaps (
     if (record_gap && gapStart < Addr_MAX)
        (*record_gap) ( gapStart, Addr_MAX - gapStart + 1 );
     */
+   ML_(am_close)(mapfd);
 }
 
 /*------END-procmaps-parser-for-Dragonfly--------------------------*/

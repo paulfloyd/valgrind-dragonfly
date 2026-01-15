@@ -1039,6 +1039,13 @@ HG_MUTEX_LOCK_OUT:
 #  error "Unsupported OS"
 #endif
 
+#if defined(VGO_dragonfly)
+   PTH_FUNC(int, ZupthreadZumutexZulock, // _pthread_mutex_lock
+            pthread_mutex_t *mutex) {
+      return mutex_lock_WRK(mutex);
+   }
+#endif
+
 #if defined(VGO_solaris)
 /* Internal to libc. Mutex is usually initialized only implicitly,
  * by zeroing mutex_t structure.

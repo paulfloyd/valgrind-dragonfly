@@ -1007,6 +1007,11 @@ PTH_FUNCS(int, pthreadZumutexZulock, pthread_mutex_lock_intercept,
           (pthread_mutex_t *mutex), (mutex));
 #endif /* VGO_solaris */
 
+#if defined(VGO_dragonfly)
+PTH_FUNCS(int, ZupthreadZumutexZulock, pthread_mutex_lock_intercept,
+          (pthread_mutex_t *mutex), (mutex));
+#endif
+
 #if defined(VGO_solaris)
 /* Internal to libc. Mutex is usually initialized only implicitly,
  * by zeroing mutex_t structure.

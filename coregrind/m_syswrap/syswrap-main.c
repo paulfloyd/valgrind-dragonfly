@@ -485,7 +485,7 @@ static
 Bool eq_SyscallArgs ( SyscallArgs* a1, SyscallArgs* a2 )
 {
    return a1->canonical_sysno == a2->canonical_sysno
-#if defined(VGO_freebsd) || defined(VGO_darwin)
+#if defined(VGO_freebsd) || defined(VGO_darwin) || defined(VGO_dragonfly)
           && a1->original_sysno == a2->original_sysno
 #endif
           && a1->arg1 == a2->arg1
@@ -2345,7 +2345,7 @@ void VG_(client_syscall) ( ThreadId tid, UInt trc )
    /* Save the syscall number in the thread state in case the syscall 
       is interrupted by a signal. */
    canonical_sysno = sci->orig_args.canonical_sysno;
-#if defined(VGO_freebsd) || defined(VGP_amd64_darwin)
+#if defined(VGO_freebsd) || defined(VGP_amd64_darwin) || defined(VGO_dragonfly)
    original_sysno = sci->orig_args.original_sysno;
 #else
    /*
@@ -2395,7 +2395,7 @@ void VG_(client_syscall) ( ThreadId tid, UInt trc )
       action.  This info is needed so that the scalar syscall argument
       checks (PRE_REG_READ calls) know which bits of the guest state
       they need to inspect. */
-#if defined(VGP_amd64_freebsd) || defined (VGP_arm64_freebsd)
+#if defined(VGP_amd64_freebsd) || defined (VGP_arm64_freebsd) || defined(VGO_dragonfly)
    if (original_sysno == __NR_syscall ||
        original_sysno == __NR___syscall) {
       syscall_syscall = True;
