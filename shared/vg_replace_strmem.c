@@ -1003,7 +1003,7 @@ static inline void my_exit ( int x )
 # if DARWIN_VERS >= DARWIN_10_12
   /* _platform_memchr$VARIANT$Base */
   MEMCHR(VG_Z_LIBSYSTEM_PLATFORM_SONAME, _platform_memchr$VARIANT$Base)
-# endif
+#endif
 
 #elif defined(VGO_solaris)
  MEMCHR(VG_Z_LIBC_SONAME, memchr)
@@ -1137,7 +1137,7 @@ static inline void my_exit ( int x )
  #define MEMCPY(soname, fnname) \
    MEMMOVE_OR_MEMCPY(20180, soname, fnname, 0)
 #else
-#define MEMCPY(soname, fnname) \
+ #define MEMCPY(soname, fnname) \
    MEMMOVE_OR_MEMCPY(20180, soname, fnname, 1)
 #endif
 
@@ -1247,7 +1247,7 @@ static inline void my_exit ( int x )
   // return from the _platform_memcmp redir where there's a
   // rip-relative jump but the dest address is NULL
   MEMCMP(VG_Z_LIBSYSTEM_PLATFORM_SONAME, _platform_memcmp$VARIANT$Base)
-# endif
+#endif
 
 #elif defined(VGO_solaris)
  MEMCMP(VG_Z_LIBC_SONAME, memcmp)
