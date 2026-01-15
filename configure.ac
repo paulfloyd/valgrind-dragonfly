@@ -90,8 +90,9 @@ AC_ARG_VAR([LTO_AR],[Archiver command for link time optimisation])
 # figure out where perl lives
 AC_PATH_PROG(PERL, perl)
 
+# FIXME PJF need an option for user-specified gdb other than "gdb"
 # figure out where gdb lives
-AC_PATH_PROG(GDB, gdb, "/no/gdb/was/found/at/configure/time")
+AC_PATH_PROG(GDB, gdb, gdb141, "/no/gdb/was/found/at/configure/time")
 AC_DEFINE_UNQUOTED(GDB_PATH, "$GDB", [path to GDB])
 
 # figure out how to compile assembler sources

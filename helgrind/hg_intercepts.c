@@ -3376,6 +3376,10 @@ LIBC_FUNC(int, semZutrywait, sem_t* sem) { /* sem_trywait */
 LIBC_FUNC(int, semZutrywait, sem_t* sem) { /* sem_trywait */
    return sem_trywait_WRK(sem);
 }
+#elif defined(VGO_dragonfly)
+PTH_FUNC(int, semZutrywait, sem_t* sem) { /* sem_trywait */
+   return sem_trywait_WRK(sem);
+}
 #elif defined(VGO_solaris)
 PTH_FUNC(int, semaZutrywait, sem_t *sem) { /* sema_trywait */
    return sem_trywait_WRK(sem);
@@ -3435,6 +3439,10 @@ PTH_FUNC(int, semZutimedwaitZAZa, sem_t* sem, const struct timespec* abs_timeout
 }
 #elif defined(VGO_freebsd)
 LIBC_FUNC(int, semZutimedwait, sem_t* sem, const struct timespec* abs_timeout) { /* sem_timedwait */
+   return sem_timedwait_WRK(sem, abs_timeout);
+}
+#elif defined(VGO_dragonfly)
+PTH_FUNC(int, semZutimedwait, sem_t* sem, const struct timespec* abs_timeout) { /* sem_timedwait */
    return sem_timedwait_WRK(sem, abs_timeout);
 }
 #elif defined(VGO_solaris)
